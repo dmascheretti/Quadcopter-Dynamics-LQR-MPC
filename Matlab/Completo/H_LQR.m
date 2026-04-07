@@ -69,4 +69,4 @@ grid on; title('Stabilizzazione Posizione');
 xlabel('Tempo [s]'); ylabel('Posizione [m]');
 legend('X', 'Y', 'Z');
 
-save('MAT/step8_LQR_workspace.mat', 'K_lqr', 'Ts');
+save('MAT/step8_workspace.mat', 'K_lqr', 'Ts');

@@ -4,7 +4,7 @@ load('MAT/step7_workspace.mat');
 
 Ts = 0.01;
 
-% Matrici discerete come nello scereipt precedente
+% Matrici discerete come nello script precedente
 sys_continuo = ss(A_lin, B_lin, eye(12), zeros(12,4));
 sys_discreto = c2d(sys_continuo, Ts, 'zoh');
 Ad = sys_discreto.A;
@@ -15,8 +15,7 @@ Q1 = diag([[10 10 10], [50 50 50], [1 1 1], [1 1 1]]);
 R1 = diag([0.1, 0.1, 0.1, 0.1]); 
 [K1, ~, ~] = lqrd(A_lin, B_lin, Q1, R1, Ts);
 
-% CASO 2 
-% Poca importanza agli errori (Q basso), costo altissimo dei motori (R alto)
+% CASO 2
 Q2 = diag([[2 2 2], [10 10 10], [1 1 1], [1 1 1]]);
 R2 = diag([5.0, 5.0, 5.0, 5.0]); 
 [K2, ~, ~] = lqrd(A_lin, B_lin, Q2, R2, Ts);
@@ -32,7 +31,8 @@ N = length(t_sim);
 
 X1 = zeros(12, N); X2 = zeros(12, N); X3 = zeros(12, N);
 
-% Condizione iniziale comune: Beccheggio 0.2 rad, Quota Z = 1 m
+% Condizione iniziale comune: Pitch 0.2 rad, Z = 1 m
+
 x0 = zeros(12,1); x0(5) = 0.2; x0(3) = 1.0;
 X1(:,1) = x0; X2(:,1) = x0; X3(:,1) = x0;
 
@@ -54,9 +54,9 @@ end
 figure('Name', 'Confronto Tuning LQR (H2)', 'Color', 'w', 'Position', [100, 100, 1000, 400]);
 
 % Colori e stili per i tre droni
-c1 = 'b'; s1 = '-';  % Blu continuo (Originale)
-c2 = 'r'; s2 = '--'; % Rosso tratteggiato (Lento)
-c3 = 'g'; s3 = '-.'; % Verde punto-linea (Aggressivo)
+c1 = 'b'; s1 = '-';  % Blu   (Originale)
+c2 = 'r'; s2 = '-'; % Rosso  (Lento)
+c3 = 'g'; s3 = '-'; % Verde  (Aggressivo)
 
 % Grafico 1 - Pitch
 subplot(1,3,1); hold on;
