@@ -74,7 +74,7 @@ plot(t_sim, X1(3, :), 'Color', c1, 'LineStyle', s1, 'LineWidth', 1.5);
 plot(t_sim, X2(3, :), 'Color', c2, 'LineStyle', s2, 'LineWidth', 1.5);
 plot(t_sim, X3(3, :), 'Color', c3, 'LineStyle', s3, 'LineWidth', 1.5);
 plot([t_sim(1) t_sim(end)], [0 0], 'k--', 'LineWidth', 1);
-grid on; title('Posizione z');
+grid on; title('z');
 xlabel('Tempo [s]'); ylabel('Posizione [m]');
 
 
