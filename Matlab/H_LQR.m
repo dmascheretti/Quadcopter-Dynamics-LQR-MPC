@@ -4,7 +4,7 @@ clear; clc; close all;
 load('MAT/step7_workspace.mat'); 
 
 f_s = 100;         % Frequenza di campionamento [Hz]
-Ts = 1 / f_s;      % Tempo di campionamento 10 ms
+Ts = 1 / f_s;      % Tempo di campionamento 10 ms per lavorare in discreto
 
 
 % Vettore di stato: x = [x y z phi theta psi dx dy dz dphi dtheta dpsi]
@@ -18,22 +18,25 @@ pesi_vel_ang   = [1, 1, 1];     % Priotita bassa
 
 Q = diag([pesi_posizione, pesi_angoli, pesi_vel_lin, pesi_vel_ang]);
 
-% Matrice R test aggressiva
 
+% Matrice R test aggressiva, non ho limiti di utilizzo di energia 
 rho = 0.1;
 R = diag([rho, rho, rho, rho]);
 
 
-% lqrd calcola il guadagno ottimale K per il sistema discreto
+% lqrd calcola il guadagno ottimale K per il sistema discreto (d) con
+% matrici A e B linearizzate calcolate prima ( G )
 [K_lqr, ~, ~] = lqrd(A_lin, B_lin, Q, R, Ts);
 
 disp(K_lqr(:, 1:6)); 
 
 
 % Matrice C e D identita e zeri 
+% ss è il sistema continuo e poi con c2d trasformo in discreto
 
 sys_continuo = ss(A_lin, B_lin, eye(12), zeros(12,4));
 
+% zoh Zero-Holder Hold -> tiene il valore fino al calcolo successivo
 sys_discreto = c2d(sys_continuo, Ts, 'zoh');
 
 % Sostiutisco u con -K * x_k e raccolgo u_k
