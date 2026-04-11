@@ -10,17 +10,17 @@ sys_discreto = c2d(sys_continuo, Ts, 'zoh');
 Ad = sys_discreto.A;
 Bd = sys_discreto.B;
 
-% CASO 1
+% CASO 1 - Classico 
 Q1 = diag([[10 10 10], [50 50 50], [1 1 1], [1 1 1]]);
 R1 = diag([0.1, 0.1, 0.1, 0.1]); 
 [K1, ~, ~] = lqrd(A_lin, B_lin, Q1, R1, Ts);
 
-% CASO 2
+% CASO 2 - Motori + pesi meno aggressivi
 Q2 = diag([[2 2 2], [10 10 10], [1 1 1], [1 1 1]]);
 R2 = diag([5.0, 5.0, 5.0, 5.0]); 
 [K2, ~, ~] = lqrd(A_lin, B_lin, Q2, R2, Ts);
 
-% CASO 3
+% CASO 3 - Caso limite aggressivo 
 Q3 = diag([[50 50 50], [200 200 200], [5 5 5], [5 5 5]]);
 R3 = diag([0.001, 0.001, 0.001, 0.001]); 
 [K3, ~, ~] = lqrd(A_lin, B_lin, Q3, R3, Ts);
@@ -37,6 +37,7 @@ x0 = zeros(12,1); x0(5) = 0.2; x0(3) = 1.0;
 X1(:,1) = x0; X2(:,1) = x0; X3(:,1) = x0;
 
 % Ciclo di simulazione (Tutti e 3 i droni in parallelo)
+% Stessa cosa di usare initial
 for k = 1:(N-1)
     % Drone 1 (Bilanciato)
     u1 = -K1 * X1(:, k);

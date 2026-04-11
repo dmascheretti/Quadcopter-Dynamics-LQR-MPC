@@ -24,9 +24,7 @@ Q = diag([pesi_posizione, pesi_angoli, pesi_vel_lin, pesi_vel_ang]);
 % Matrice R test aggressiva, non ho limiti di utilizzo di energia 
 % Aumantando rho dico di utilizzare i motori il meno possibile
 
-rho = 0.1; % Questo valore dipende dalla proporzione con i pesi 500:1
-
-% Se metto rho = 10 ci metterà più tempo a tornare in posizione
+rho = ; % Questo valore dipende dalla proporzione con i pesi 500:1ù
 
 % Formula per rho -> 1/(delta U max)^2 con delta U = Umax - Ueq (per
 % equilibrio)
