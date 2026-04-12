@@ -16,6 +16,8 @@ function x_dot = drone_dynamics(t, x, u, M_fun, C_fun, G_n, B_fun)
     C_n = C_fun(phi_v, theta_v, psi_v, dphi_v, dtheta_v, dpsi_v);
     B_n = B_fun(phi_v, theta_v, psi_v);
 
+    % In alcuni step la U è calcolata sulle forze e poi trasformata 
+    % Qui uso T e momenti, non forze !!!
     q_ddot = M_n \ (-C_n*qd_val - G_n + B_n*u);
     x_dot  = [qd_val; q_ddot];
 end

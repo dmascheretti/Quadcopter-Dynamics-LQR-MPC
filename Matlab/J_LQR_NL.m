@@ -28,7 +28,7 @@ alpha_cant = deg2rad(2); % Ipotesi angolo di due gradi
 F_eq = (m_val * g_val) / (4 * cos(alpha_cant)) * ones(4, 1);
 
 t_sim_total = 5; % Durata simulazione [s]
-N_steps = round(t_sim_total / Ts);
+N_steps = round(t_sim_total / Ts); % Numero passi in base al Ts
 
 % Log delle variabili per i grafici
 t_log = zeros(1, N_steps);
@@ -39,15 +39,16 @@ U_log = zeros(4, N_steps);
 % [x y z phi theta psi u v w p q r]
 x_start = zeros(12, 1);
 x_start(3) = 1.0;  % Errore quota (1 metro)
-x_start(5) = 0.2;  % Errore pitch (~11 gradi, muso in giù)
-
+x_start(5) = 0.2;  % Errore pitch
 X_log(:, 1) = x_start;
 t_log(1) = 0;
 
 % Saturazione
 F_min = 0;         % Minimo non fa nulla
-F_max = 12;        % Spinta massima 
+F_max = 12;        % Spinta massima 12 N per esempio
 
+
+% Qua come usare initial ma nel modello non lineare
 for k = 1:(N_steps-1)
     
     delta_x = X_log(:, k); 
@@ -62,7 +63,8 @@ for k = 1:(N_steps-1)
     U_log(:, k) = F_motori;
    
     % drone_dynamics non usa forze ma T + momenti
-    % Trasformo con matrice gamma
+    % Trasformo con matrice gamma per dare poi a drone_dynamics i valori
+    % corretti
     U_virtual = Gamma_num * F_motori;
     
     % ode 45
@@ -85,21 +87,21 @@ figure('Name', 'LQR su Modello NON-Lineare (ODE45)', 'Color', 'w', 'Position', [
 subplot(2,2,1); hold on;
 plot(t_log, X_log(5, :), 'r', 'LineWidth', 1.5);
 plot([t_log(1) t_log(end)], [0 0], 'k--', 'LineWidth', 1);
-grid on; title('Recupero Beccheggio (\theta)');
+grid on; title('\theta)');
 xlabel('Tempo [s]'); ylabel('Angolo [rad]');
 
 % Z
 subplot(2,2,2); hold on;
 plot(t_log, X_log(3, :), 'g', 'LineWidth', 1.5);
 plot([t_log(1) t_log(end)], [0 0], 'k--', 'LineWidth', 1);
-grid on; title('Recupero Quota (Z)');
+grid on; title('Z');
 xlabel('Tempo [s]'); ylabel('Posizione [m]');
 
 % X
 subplot(2,2,3); hold on;
 plot(t_log, X_log(1, :), 'b', 'LineWidth', 1.5);
 plot([t_log(1) t_log(end)], [0 0], 'k--', 'LineWidth', 1);
-grid on; title('Deriva Orizzontale (X)');
+grid on; title('X');
 xlabel('Tempo [s]'); ylabel('Posizione [m]');
 
 % Sforzo motori

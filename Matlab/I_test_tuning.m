@@ -2,7 +2,7 @@
 
 load('MAT/step7_workspace.mat'); 
 
-Ts = 0.01;
+Ts = 0.01; % Tempo campionamento 10 ms
 
 % Matrici discerete come nello script precedente
 sys_continuo = ss(A_lin, B_lin, eye(12), zeros(12,4));
@@ -20,7 +20,7 @@ Q2 = diag([[2 2 2], [10 10 10], [1 1 1], [1 1 1]]);
 R2 = diag([5.0, 5.0, 5.0, 5.0]); 
 [K2, ~, ~] = lqrd(A_lin, B_lin, Q2, R2, Ts);
 
-% CASO 3 - Caso limite aggressivo 
+% CASO 3 - Caso limite aggressivo
 Q3 = diag([[50 50 50], [200 200 200], [5 5 5], [5 5 5]]);
 R3 = diag([0.001, 0.001, 0.001, 0.001]); 
 [K3, ~, ~] = lqrd(A_lin, B_lin, Q3, R3, Ts);
