@@ -69,7 +69,7 @@ xlabel('t [s]'); ylabel('x [m]'); title('Movimento su x');
 sgtitle('tau_\theta = 0.01 Nm');
 
 
-% disegna_drone_3d(t1, X1);
+disegna_drone_3d(t1, X1);
 % disegna_drone_3d(t2, X2);
 % disegna_drone_3d(t3, X3);
 

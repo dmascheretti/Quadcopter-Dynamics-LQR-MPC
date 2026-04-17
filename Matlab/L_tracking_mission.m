@@ -1,5 +1,4 @@
-% K - LQR TRACKING NL
-
+% K - LQR TRACKING NL (MULTI-WAYPOINT)
 clear; clc; close all;
 
 load('MAT/step7_workspace.mat');
@@ -11,36 +10,55 @@ Gamma_num = double(Gamma_num);
 f_s = 100;       
 Ts = 1 / f_s;    
 
-disp (Ts);
 % Tuning bilanciato
 Q = diag([[10 10 10], [50 50 50], [1 1 1], [1 1 1]]);
+
+% Non considero molot energia ( può fare manovre aggressive )
 R = diag([0.1, 0.1, 0.1, 0.1]); 
+
+% R = diag([10, 10, 10, 10]); 
+% R = diag([100, 100, 100, 100]); 
+
+% Se aumento R diminuiscono gli angoli ( e aumenta il tempo ) 
 [K_lqr, ~, ~] = lqrd(A_lin, B_lin, Q, R, Ts);
 
 % Calcolo della spinta di Hovering (F_eq) con angolo 2 gradi
 alpha_cant = deg2rad(2); 
 F_eq = (m_val * g_val) / (4 * cos(alpha_cant)) * ones(4, 1);
 
-t_sim_total = 8; % t di simulaziome
-N_steps = round(t_sim_total / Ts); 
+t_sim_total = 20; % tempo di simulazione di 15 secondi
+N_steps = round(t_sim_total / Ts); % 15/0.01 = 15000
 
-% Log delle variabili
+% Log delle variabili ( vettori di 0 lunghi N_steps che poi verranno
+% riempiti durante la simulazione ) - 15000 righe
 t_log = zeros(1, N_steps);
 X_log = zeros(12, N_steps);
 U_log = zeros(4, N_steps);
+Target_log = zeros(3, N_steps); % NUOVO: Log per disegnare i target nei grafici
 
-% Target !! Se metto ad exe ( 20, 10, 10) gli angoli di Eulero assumono
-% valori troppo elevati !!
+% Lista waypoint da raggiungre ( sulle righe ) - trasposta
+waypoints = [ 0.5,  0.5,  1.0;  
+             -0.5,  1.0,  1.5;  
+              1.0,  2.0,  0.0;
+              0.0,  0.0,  1.0 ]';
+
+% Posso aggiungere quante righe voglio
+
+wp_corrente = 1; % Attualmente puntiamo alla prima riga 
+num_wp = size(waypoints, 2); % Il numero di waypoint è la dimensione della matrice
+
+
+tolleranza = 0.2; % Tolleranza per cambiare setpoint, se mi avvicino di 20 cm 
+% passo al setpoint successivo ( cosi non sta fermo a 0 )
+
+% Inizializzo il primo Target 
 x_target = zeros(12, 1);
-x_target(1) = 3.0;  % Vai a X = 3 metri
-x_target(2) = 2.0;  % Vai a Y = 2 metri
-x_target(3) = 4.0;  % Vai a Z = 4 metri
+x_target(1:3) = waypoints(:, wp_corrente); % Metto nelle prime tre posizioni
+% i valori del primo waypoint ( o0vvero il target x y z sono quelle del
+% primo waypoint )
 
-% Ipotesi : partiamo da fermi 
+% Ipotesi : partiamo da fermi ( per il grafico tutto a 0 a t = 0 )
 X_log(:, 1) = zeros(12,1); 
-
-% Posso anche far partire da stati diversi
-
 t_log(1) = 0;
 
 % Saturazione
@@ -49,8 +67,18 @@ F_max = 12;
 
 for k = 1:(N_steps-1)
     
-    % Calcolo distanza dal target ad ogni step 
+    dist = norm(X_log(1:3, k) - x_target(1:3)); % Distanza dal target
 
+    if dist < tolleranza && wp_corrente < num_wp % Se è piu vicino della tolleranza e 
+        % non ha finito i waypoint allora stampa OK + tempo
+        disp(['WP ', num2str(wp_corrente), ' raggiunto al tempo t=', num2str(t_log(k)), 's']);
+        wp_corrente = wp_corrente + 1;
+        x_target(1:3) = waypoints(:, wp_corrente); % Aggiorno il target con il nuovo punto 
+    end
+    
+    Target_log(:, k) = x_target(1:3); % Salvo per il grafico
+    
+    % Calcolo distanza dal target ad ogni step 
     delta_x = X_log(:, k) - x_target; 
     
     delta_u = -K_lqr * delta_x;
@@ -74,8 +102,10 @@ for k = 1:(N_steps-1)
 end
 
 U_log(:, end) = U_log(:, end-1);
+Target_log(:, end) = x_target(1:3); % Completo il log dei target
 
-figure('Name', 'LQR Tracking', 'Color', 'w', 'Position', [100, 100, 1000, 600]);
+
+figure('Name', 'LQR Tracking Multi-Waypoint', 'Color', 'w', 'Position', [100, 100, 1000, 600]);
 tabgroup = uitabgroup(gcf);
 
 % Stessa finestra
@@ -85,21 +115,21 @@ tab2 = uitab(tabgroup, 'Title', 'Angoli di Eulero');
 % X
 subplot(2,2,1, 'Parent', tab1); hold on;
 plot(t_log, X_log(1, :), 'b', 'LineWidth', 1.5);
-yline(x_target(1), 'k--', 'Target X', 'LineWidth', 1);
+plot(t_log, Target_log(1, :), 'k--', 'LineWidth', 1); 
 grid on; title('X');
 xlabel('Tempo [s]'); ylabel('Posizione [m]');
 
 % Y
 subplot(2,2,2, 'Parent', tab1); hold on;
 plot(t_log, X_log(2, :), 'r', 'LineWidth', 1.5);
-yline(x_target(2), 'k--', 'Target Y', 'LineWidth', 1);
+plot(t_log, Target_log(2, :), 'k--', 'LineWidth', 1);
 grid on; title('Y');
 xlabel('Tempo [s]'); ylabel('Posizione [m]');
 
 % Z
 subplot(2,2,3, 'Parent', tab1); hold on;
 plot(t_log, X_log(3, :), 'g', 'LineWidth', 1.5);
-yline(x_target(3), 'k--', 'Target Z', 'LineWidth', 1);
+plot(t_log, Target_log(3, :), 'k--', 'LineWidth', 1);
 grid on; title('Z');
 xlabel('Tempo [s]'); ylabel('Posizione [m]');
 
@@ -130,3 +160,9 @@ yline(0, 'k--', 'LineWidth', 1);
 grid on; title('\psi');
 ylabel('Angolo [deg]');
 xlabel('Tempo [s]');
+
+disegna_drone_3d(t_log, X_log', waypoints);
+
+% 1 - Se tengo waypoints con valore 3...5 ecc ecc gli angoli impazziscono 
+% sol. ridurre distanza oppure aumentare R ( la linearizzazione non
+% funionava più )
