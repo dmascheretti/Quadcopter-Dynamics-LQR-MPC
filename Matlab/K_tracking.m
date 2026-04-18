@@ -21,7 +21,7 @@ R = diag([0.1, 0.1, 0.1, 0.1]);
 alpha_cant = deg2rad(2); 
 F_eq = (m_val * g_val) / (4 * cos(alpha_cant)) * ones(4, 1);
 
-t_sim_total = 8; % t di simulaziome
+t_sim_total = 30; % t di simulaziome
 N_steps = round(t_sim_total / Ts); 
 
 % Log delle variabili
@@ -30,7 +30,11 @@ X_log = zeros(12, N_steps);
 U_log = zeros(4, N_steps);
 
 % Target !! Se metto ad exe ( 20, 10, 10) gli angoli di Eulero assumono
-% valori troppo elevati !!
+% valori troppo elevati !! 
+% !!!
+% Non funziona piu la linearizazzione e tutto diverge sia angoli che
+% posizioni
+% !!!
 x_target = zeros(12, 1);
 x_target(1) = 3.0;  % Vai a X = 3 metri
 x_target(2) = 2.0;  % Vai a Y = 2 metri

@@ -48,7 +48,8 @@ F_min = 0;         % Minimo non fa nulla
 F_max = 12;        % Spinta massima 12 N per esempio
 
 
-% Qua come usare initial ma nel modello non lineare
+% Qua come usare initial ma nel modello non lineare -> calcolo passo per
+% passo, tengo nei log e poi stampo i log
 for k = 1:(N_steps-1)
     
     delta_x = X_log(:, k); 
@@ -73,7 +74,7 @@ for k = 1:(N_steps-1)
     % Passiamo U virtuali non le forze
     [t_ode, X_ode] = ode45(@(t, x) drone_dynamics(t, x, U_virtual, M_fun, C_fun, G_n, B_fun), t_span, X_log(:, k));
     
-    % Stato finale
+    % Salvo stati per X e t ( calcolati con ode ) nei grafici
     X_log(:, k+1) = X_ode(end, :)';
     t_log(k+1) = t_span(2);
 end
