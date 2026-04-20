@@ -13,13 +13,15 @@ Ts = 1 / f_s;
 % Tuning bilanciato
 Q = diag([[10 10 10], [50 50 50], [1 1 1], [1 1 1]]);
 
-% Non considero molot energia ( può fare manovre aggressive )
+% Non considero molto energia ( può fare manovre aggressive )
 R = diag([0.1, 0.1, 0.1, 0.1]); 
 
 % R = diag([10, 10, 10, 10]); 
 % R = diag([100, 100, 100, 100]); 
 
 % Se aumento R diminuiscono gli angoli ( e aumenta il tempo ) 
+% Con lqrd uso le matrivi continue e le rendo discrete inserendo il tempo
+% di campionmento Ts negli argomenti
 [K_lqr, ~, ~] = lqrd(A_lin, B_lin, Q, R, Ts);
 
 % Calcolo della spinta di Hovering (F_eq) con angolo 2 gradi
@@ -34,13 +36,16 @@ N_steps = round(t_sim_total / Ts); % 15/0.01 = 15000
 t_log = zeros(1, N_steps);
 X_log = zeros(12, N_steps);
 U_log = zeros(4, N_steps);
-Target_log = zeros(3, N_steps); % NUOVO: Log per disegnare i target nei grafici
+Target_log = zeros(3, N_steps);
 
 % Lista waypoint da raggiungre ( sulle righe ) - trasposta
 waypoints = [ 0.5,  0.5,  1.0;  
              -0.5,  1.0,  1.5;  
               1.0,  2.0,  0.0;
               0.0,  0.0,  1.0 ]';
+
+% Posso usare questa tecnica anche per fare una traiettoria che in maniera
+% diretta farebbe divergere il drone !
 
 % Posso aggiungere quante righe voglio
 
@@ -166,3 +171,12 @@ disegna_drone_3d(t_log, X_log', waypoints);
 % 1 - Se tengo waypoints con valore 3...5 ecc ecc gli angoli impazziscono 
 % sol. ridurre distanza oppure aumentare R ( la linearizzazione non
 % funionava più )
+
+% 2 - ha senso integrare un osservatore per il calcolo del vettore di stato
+% stimato o ipotizziamo che il sistema sia completamente osservabile e i
+% sensori perfetti?
+
+% 3 - Ma se con angoli troppo elevati il drone diverge non si puo dividere
+% il pezzetto di traiettoria in segmenti sempre piu piccoli in cui la
+% linerizzazione vale ancora? E' questo che collega la teoria dell' LQR con
+% quella del MPC?

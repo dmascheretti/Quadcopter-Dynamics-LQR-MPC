@@ -9,11 +9,11 @@ Ts = 1 / f_s;      % Tempo di campionamento 10 ms per lavorare in discreto
 
 % Vettore di stato: x = [x y z phi theta psi dx dy dz dphi dtheta dpsi]
 
-% Ad ogni elemento assegno un peso in base alla priorità 
+% Ad ogni elemento del vettore di stato assegno un peso in base alla priorità 
 
 pesi_posizione = [10, 10, 10];
 
-% Formula per pesu 1/(theta_max)^2) hp : theta errore max 8 gradi
+% Formula per pesi 1/(theta_max)^2) hp : theta errore max 8 gradi
 pesi_angoli    = [50, 50, 50];  % Priorita alta
 pesi_vel_lin   = [1, 1, 1];
 pesi_vel_ang   = [1, 1, 1];     % Priotita bassa 
@@ -36,11 +36,12 @@ R = diag([rho, rho, rho, rho]);
 
 % lqrd calcola il guadagno ottimale K per il sistema discreto (d) con
 % matrici A e B linearizzate calcolate prima ( G )
+% lqrd usa matrici continue prese da step 7 e rende discrete con Ts
 [K_lqr, ~, ~] = lqrd(A_lin, B_lin, Q, R, Ts);
 
-K = (K_lqr(:, 1:6)); 
+K = (K_lqr(:, 1:6)); % Verifica disaccoppiamento
 
-display(K); % righe sono i motori, colonne è q
+disp(K_lqr); % righe sono i motori, colonne è q
 
 
 % Matrice C e D identita e zeri -> stesse nello step equilibrio
@@ -48,7 +49,7 @@ display(K); % righe sono i motori, colonne è q
 
 sys_continuo = ss(A_lin, B_lin, eye(12), zeros(12,4));
 
-% zoh Zero-Holder Hold -> tiene il valore fino al calcolo successivo
+% zoh Zero-Older Hold -> tiene il valore fino al calcolo successivo
 sys_discreto = c2d(sys_continuo, Ts, 'zoh');
 
 % Equazione base è  x_k+1 = A * x_k + B * u_k
@@ -56,13 +57,13 @@ sys_discreto = c2d(sys_continuo, Ts, 'zoh');
 % Quindi x_k+1 = A * x_k - B * K * x_k
 % x_k+1 = (A - B * K) x_k
 
-% Sostiutisco u con -K * x_k e raccolgo u_k
+% Sostiutisco u con -K * x_k e raccolgo x_k -> diventa la matrice A_cl
 A_cl = sys_discreto.A - sys_discreto.B * K_lqr;
 sys_cl = ss(A_cl, zeros(12,4), eye(12), zeros(12,4), Ts);
 
 % Condizioni iniziale 
 x0 = zeros(12,1);
-x0(4) = 0.2;  % Pitch
+x0(5) = 0.2;  % Pitch
 x0(3) = 1.0;  % z = 1 m
 
 % Simulazione

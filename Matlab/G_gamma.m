@@ -1,5 +1,7 @@
 % 6 - MATRICE GAMMA
 
+clear; clc; close all;
+
 load('MAT/step3_workspace.mat'); 
 parametri_drone; 
 
@@ -27,7 +29,7 @@ U = Gamma_num * u_forze;
 display (U);
 
 % Nuovo sistema con ingressi con forze e non più T + momenti
-q_ddot_sym_f = simplify(M_q \ (-C_q*q_dot - G_q + B_q*U));
+q_ddot_sym_f = (M_q \ (-C_q*q_dot - G_q + B_q*U));
 
 % q_dot rimane la stessa, q_ddot cambia per vettore U
 f_sym_f = [q_dot; q_ddot_sym_f];
@@ -58,9 +60,9 @@ A_lin = double(subs(A_lin_simb, [m, g, Ixx, Iyy, Izz], ...
 B_lin = double(subs(B_lin_simb, [m, g, Ixx, Iyy, Izz], ...
                                 [m_val, g_val, Ixx_val, Iyy_val, Izz_val]));
 
-display (A_lin);
+disp (A_lin);
 
-display (B_lin);
+disp (B_lin);
 
 % Verifica Controllabilità
 matrice_controllabilita = ctrb(A_lin, B_lin);

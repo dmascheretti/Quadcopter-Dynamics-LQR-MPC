@@ -2,7 +2,7 @@
 
 clear; clc; close all;
 
-load('MAT/step7_workspace.mat');
+load('MAT/step7_workspace.mat'); % Carico matrici A e B 
 load('MAT/step4_workspace.mat', 'M_fun', 'C_fun', 'G_n', 'B_fun');
 
 parametri_drone;
@@ -30,7 +30,7 @@ F_eq = (m_val * g_val) / (4 * cos(alpha_cant)) * ones(4, 1);
 t_sim_total = 5; % Durata simulazione [s]
 N_steps = round(t_sim_total / Ts); % Numero passi in base al Ts
 
-% Log delle variabili per i grafici
+% Inizializzazione log variabili per i grafici 
 t_log = zeros(1, N_steps);
 X_log = zeros(12, N_steps);
 U_log = zeros(4, N_steps);
@@ -41,7 +41,7 @@ x_start = zeros(12, 1);
 x_start(3) = 1.0;  % Errore quota (1 metro)
 x_start(5) = 0.2;  % Errore pitch
 X_log(:, 1) = x_start;
-t_log(1) = 0;
+t_log(1) = 0; % Parto da tempo 0
 
 % Saturazione
 F_min = 0;         % Minimo non fa nulla
@@ -71,7 +71,8 @@ for k = 1:(N_steps-1)
     % ode 45
     t_span = [t_log(k), t_log(k) + Ts];
     
-    % Passiamo U virtuali non le forze
+    % Passiamo U virtuali non le forze + passo le matrici come funzioni e
+    % poi le trasfrmo in drone dynamics
     [t_ode, X_ode] = ode45(@(t, x) drone_dynamics(t, x, U_virtual, M_fun, C_fun, G_n, B_fun), t_span, X_log(:, k));
     
     % Salvo stati per X e t ( calcolati con ode ) nei grafici

@@ -36,30 +36,28 @@ X1 = zeros(12, N); X2 = zeros(12, N); X3 = zeros(12, N);
 x0 = zeros(12,1); x0(5) = 0.2; x0(3) = 1.0;
 X1(:,1) = x0; X2(:,1) = x0; X3(:,1) = x0;
 
-% Ciclo di simulazione (Tutti e 3 i droni in parallelo)
 % Stessa cosa di usare initial
 for k = 1:(N-1)
-    % Drone 1 (Bilanciato)
+    % Caso 1
     u1 = -K1 * X1(:, k);
     X1(:, k+1) = Ad * X1(:, k) + Bd * u1;
     
-    % Drone 2 (Lento)
+    % Caso 2
     u2 = -K2 * X2(:, k);
     X2(:, k+1) = Ad * X2(:, k) + Bd * u2;
     
-    % Drone 3 (Aggressivo)
+    % Caso 3
     u3 = -K3 * X3(:, k);
     X3(:, k+1) = Ad * X3(:, k) + Bd * u3;
 end
 
 figure('Name', 'Confronto Tuning LQR (H2)', 'Color', 'w', 'Position', [100, 100, 1000, 400]);
 
-% Colori e stili per i tre droni
-c1 = 'b'; s1 = '-';  % Blu   (Originale)
-c2 = 'r'; s2 = '-'; % Rosso  (Lento)
-c3 = 'g'; s3 = '-'; % Verde  (Aggressivo)
+c1 = 'b'; s1 = '-'; 
+c2 = 'r'; s2 = '-'; 
+c3 = 'g'; s3 = '-'; 
 
-% Grafico 1 - Pitch
+% Pitch
 subplot(1,3,1); hold on;
 plot(t_sim, X1(5, :), 'Color', c1, 'LineStyle', s1, 'LineWidth', 1.5); 
 plot(t_sim, X2(5, :), 'Color', c2, 'LineStyle', s2, 'LineWidth', 1.5);
@@ -69,7 +67,7 @@ grid on; title('\theta');
 xlabel('Tempo [s]'); ylabel('Angolo [rad]');
 legend('1. Bilanciato', '2. Lento (R alto)', '3. Aggressivo (R basso)');
 
-% Grafico 2 - Z
+% Z
 subplot(1,3,2); hold on;
 plot(t_sim, X1(3, :), 'Color', c1, 'LineStyle', s1, 'LineWidth', 1.5); 
 plot(t_sim, X2(3, :), 'Color', c2, 'LineStyle', s2, 'LineWidth', 1.5);
@@ -79,7 +77,7 @@ grid on; title('z');
 xlabel('Tempo [s]'); ylabel('Posizione [m]');
 
 
-% Grafico 3 - X
+% X
 subplot(1,3,3); hold on;
 plot(t_sim, X1(1, :), 'Color', c1, 'LineStyle', s1, 'LineWidth', 1.5); 
 plot(t_sim, X2(1, :), 'Color', c2, 'LineStyle', s2, 'LineWidth', 1.5);

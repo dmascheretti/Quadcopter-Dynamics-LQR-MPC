@@ -55,7 +55,7 @@ for k = 1:(N_steps-1)
     
     % Calcolo distanza dal target ad ogni step 
 
-    delta_x = X_log(:, k) - x_target; 
+    delta_x = X_log(:, k) - x_target; % Dove sono ora - dove devo arrivare
     
     delta_u = -K_lqr * delta_x;
     
@@ -81,6 +81,7 @@ U_log(:, end) = U_log(:, end-1);
 
 figure('Name', 'LQR Tracking', 'Color', 'w', 'Position', [100, 100, 1000, 600]);
 tabgroup = uitabgroup(gcf);
+
 
 % Stessa finestra
 tab1 = uitab(tabgroup, 'Title', 'Posizioni Tracking');
