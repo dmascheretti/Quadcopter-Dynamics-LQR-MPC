@@ -1,4 +1,4 @@
-% K - LQR TRACKING NL (MULTI-WAYPOINT)
+7% K - LQR TRACKING NL (MULTI-WAYPOINT)
 clear; clc; close all;
 
 load('MAT/step7_workspace.mat');
@@ -180,3 +180,7 @@ disegna_drone_3d(t_log, X_log', waypoints);
 % il pezzetto di traiettoria in segmenti sempre piu piccoli in cui la
 % linerizzazione vale ancora? E' questo che collega la teoria dell' LQR con
 % quella del MPC?
+
+
+% Scrivere MPC 
+% casaDI
