@@ -1,28 +1,9 @@
-% M - MPC CASADI SETUP
-
+% M - MPC CASADI SETUP 
 import casadi.*
-
-load('MAT/step7_workspace.mat');
-load('MAT/step4_workspace.mat', 'M_fun', 'C_fun', 'G_n', 'B_fun');
-
-parametri_drone;
-
-Gamma_num = double(Gamma_num); % Matrice Gamma da step 7 
-
-Ts = 0.05;         % Tempo campionamento
-N = 20;            % Orizzonte predittivo 
-
-Q_pos = diag([100, 100, 100]); % Agisce solo su x y z, gli angoli hanno i vincoli
-
-R_mot = diag([0.1, 0.1, 0.1, 0.1]); 
-
-alpha_cant = deg2rad(2); 
-F_eq = (m_val * g_val) / (4 * cos(alpha_cant)) * ones(4, 1);
 
 % 12 stati e 4 ingressi
 x = MX.sym('x', 12); 
 u = MX.sym('u', 4);  
-
 limite_angoli = pi/6;
 
 % Descrizione stati del sistema
@@ -52,29 +33,26 @@ k4 = f(x + Ts * k3, u);
 
 % Formula per trovare la prossima posizione in base allo momento corrente
 % Calcola avanzamento del drone
+
 x_next = x + Ts/6 * (k1 + 2*k2 + 2*k3 + k4);
 F = Function('F', {x, u}, {x_next});
 
 opti = casadi.Opti();
-
 % Traiettoria e comandi futuri
 X = opti.variable(12, N+1); 
 U = opti.variable(4, N);    
-
 x0_param   = opti.parameter(12, 1); % Stato attuale
 target_pos = opti.parameter(3, 1);  % Target 
 
 % Inserisco vincoli
-
-opti.subject_to(X(:,1) == x0_param); % Condizione iniziale
+opti.subject_to(X(:,1) == x0_param); 
 for k = 1:N
     opti.subject_to(X(:, k+1) == F(X(:, k), U(:, k))); % Rispetta leggi dinamica 
 end
 opti.subject_to(0 <= U <= 12); % Saturazione motori 0 - 12 N
 opti.subject_to(-limite_angoli <= X(4:5, :) <= limite_angoli); % Limiti angoli (Pitch e Roll)
 
-% Funzioni di costo, valuta le traiettorie calcolate, obiettivo costo
-% minore possibile
+% Funzioni di costo
 cost = 0;
 for k = 1:N
     err_pos = X(1:3, k) - target_pos;
