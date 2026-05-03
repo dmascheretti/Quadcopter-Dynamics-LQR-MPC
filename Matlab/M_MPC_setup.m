@@ -57,7 +57,7 @@ cost = 0;
 for k = 1:N
     err_pos = X(1:3, k) - target_pos;
     delta_u = U(:, k) - F_eq; 
-    cost = cost + err_pos' * Q_pos * err_pos + delta_u' * R_mot * delta_u;
+    cost = cost + err_pos' * Q_pos * err_pos + delta_u' * R_mot * delta_u; % costo
 end
 opti.minimize(cost); % Tiene solo quella con costo minore
 
