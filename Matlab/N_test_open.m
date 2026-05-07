@@ -7,7 +7,7 @@ load('MAT/step4_workspace.mat', 'M_fun', 'C_fun', 'G_n', 'B_fun');
 load('MAT/step7_workspace.mat');
 
 Ts = 0.05;
-N = 60;
+N = 20;
 parametri_drone;
 Gamma_num = double(Gamma_num);
 
@@ -18,7 +18,7 @@ R_mot = diag([0.1, 0.1, 0.1, 0.1]);
 alpha_cant = deg2rad(2); 
 F_eq = (m_val * g_val) / (4 * cos(alpha_cant)) * ones(4, 1);
 
-M_MPC_setup; 
+M_MPC_setup; % Qui creo solo ambiente non calocla nessun valore ancora
 
 goal = [5; 2; 3];
 
@@ -26,7 +26,7 @@ x_start = zeros(12,1);
 opti.set_value(x0_param, x_start); % Riempiamo parameter nello script precedente 
 opti.set_value(target_pos, goal); % Stessa cosa
 
-opti.set_initial(U, repmat(F_eq, 1, N)); % Velocizza processo
+opti.set_initial(U, repmat(F_eq, 1, N)); % Velocizza processo, dico di aprtire con F eq
 
 try
     sol = opti.solve(); % Testo tutte le traiettore e scelgo quella a costo minore

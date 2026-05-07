@@ -110,3 +110,11 @@ grid on;
 
 
 % Se auemnta a 1 7 20 fa un effetto strano tipo fionda come mai?
+
+% Per teoria: Q ed R sono definite positive --> forma qudratica è positiva
+% + anche continua perche quadratica ( per costruzione )
+
+% Per CLF è molto complessa da trovare avendo non linearità e 12 stati
+
+% Set invariante dei punti è deifnito dai vincoli su U motori e su X angoli
+% e spazi se aggiungo ostacoli
