@@ -7,13 +7,16 @@ load('MAT/step7_workspace.mat');
 parametri_drone;
 Gamma_num = double(Gamma_num);
 
-Ts = 0.05;         % Tempo di campionamento
-N = 20; 
+Ts = 0.01;         % Tempo di campionamento
+N = 40; 
 limite_angoli = pi/6;
 
 % Pesi per la funzione di costo (Definita Positiva)
+
+% Rapporto tra Q ed R identifca importanza di arrivare all'obiettivo vs
+% utilizzare energia
 Q_pos = diag([100, 100, 100]); 
-R_mot = diag([0.1, 0.1, 0.1, 0.1]); 
+R_mot = diag([1, 1, 1, 1]); 
 
 alpha_cant = deg2rad(2); 
 F_eq = (m_val * g_val) / (4 * cos(alpha_cant)) * ones(4, 1);
@@ -21,7 +24,7 @@ F_eq = (m_val * g_val) / (4 * cos(alpha_cant)) * ones(4, 1);
 
 M_MPC_setup; % Richiamo file setup per matematica MPC
 
-T_sim = 20; % [s]
+T_sim = 10; % [s]
 N_steps = round(T_sim / Ts);
 
 % Salvataggio dati per grafici
@@ -30,10 +33,13 @@ U_log = zeros(4, N_steps);
 T_log = (0:N_steps-1) * Ts;
 
 x_corrente = zeros(12, 1); % Condizioni iniziali
-bersaglio = [1; 7; 20];     % Taget
+bersaglio = [3; 4; 3];     % Taget
 
 % Quello che facevamo con setInitial nello script precedente
+% Ora prima facciamo con repmat poi mettiamo in initial riga 50
 u_guess = repmat(F_eq, 1, N);
+
+u_applicato_precedente = F_eq;
 
 
 for k = 1:N_steps
@@ -41,6 +47,7 @@ for k = 1:N_steps
     % Aggiornamento valori
     opti.set_value(x0_param, x_corrente);
     opti.set_value(target_pos, bersaglio);
+    opti.set_value(u_prev_param, u_applicato_precedente);
     
     % Ipotisi inziale per velocizzare processo
     opti.set_initial(U, u_guess);
@@ -65,9 +72,11 @@ for k = 1:N_steps
     U_log(:, k) = u_applicato;
     
     % Applico controllo + simulo porossimi passi con RK4
-    x_corrente_casadi = F(x_corrente, u_applicato);
-    x_corrente = full(x_corrente_casadi);
+    x_corrente_casadi = F(x_corrente, u_applicato); % Calcolo nuova posizione
+    x_corrente = full(x_corrente_casadi); % Estrae numeri puri
     
+    u_applicato_precedente = u_applicato;
+
     % Stampa lo stato ogni 10 passi 
     if mod(k, 10) == 0
         fprintf('Tempo: %05.2f s | Quota Z: %05.2f m | X: %05.2f m | Y: %05.2f m\n', ...
@@ -109,7 +118,8 @@ grid on;
 
 
 
-% Se auemnta a 1 7 20 fa un effetto strano tipo fionda come mai?
+% Se auemnta a 1 7 20 fa un effetto strano tipo fionda come mai? Se auemnto
+% R diminuisce questo effetto perche fa amnovre meno aggressive
 
 % Per teoria: Q ed R sono definite positive --> forma qudratica è positiva
 % + anche continua perche quadratica ( per costruzione )
@@ -118,3 +128,6 @@ grid on;
 
 % Set invariante dei punti è deifnito dai vincoli su U motori e su X angoli
 % e spazi se aggiungo ostacoli
+
+% Se metto distanza troppo elevate e passi troppo ridotti va dritto e non
+% ha tempo per arrivare al bersaglio 

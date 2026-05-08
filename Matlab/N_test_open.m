@@ -12,7 +12,7 @@ parametri_drone;
 Gamma_num = double(Gamma_num);
 
 % Definite positive -> Lyapunov
-Q_pos = diag([100, 100, 100]); % Mi interessa solo la posizione
+Q_pos = diag([100, 100, 100]); % Mi interessa solo la posizione, ma forma quadratica quindi uso diagonale
 R_mot = diag([0.1, 0.1, 0.1, 0.1]); 
 
 alpha_cant = deg2rad(2); 
@@ -25,6 +25,7 @@ goal = [5; 2; 3];
 x_start = zeros(12,1);
 opti.set_value(x0_param, x_start); % Riempiamo parameter nello script precedente 
 opti.set_value(target_pos, goal); % Stessa cosa
+opti.set_value(u_prev_param, F_eq);
 
 opti.set_initial(U, repmat(F_eq, 1, N)); % Velocizza processo, dico di aprtire con F eq
 

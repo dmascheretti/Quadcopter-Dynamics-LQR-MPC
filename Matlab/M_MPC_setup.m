@@ -8,6 +8,8 @@ limite_angoli = pi/6;
 
 % Descrizione stati del sistema
 % x = [x,y,z,ϕ,θ,ψ,x˙,y˙​,z˙,ϕ',θ',ψ']
+
+% Non assegno x y z perche tanto non incidono direttamente
 phi_v    = x(4); theta_v  = x(5); psi_v    = x(6);
 dphi_v   = x(10); dtheta_v = x(11); dpsi_v   = x(12);
 qd_val   = x(7:12);
@@ -17,6 +19,7 @@ U_virtual = Gamma_num * u;
 M_n = M_fun(phi_v, theta_v, psi_v);
 C_n = C_fun(phi_v, theta_v, psi_v, dphi_v, dtheta_v, dpsi_v);
 B_n = B_fun(phi_v, theta_v, psi_v);
+
 
 % Calcolo derivata seconda e creo vettore X ( ode )
 q_ddot = M_n \ (-C_n*qd_val - G_n + B_n * U_virtual);
@@ -52,6 +55,8 @@ U = opti.variable(4, N);    % Inconginta ingresso
 x0_param   = opti.parameter(12, 1); % Stato attuale
 target_pos = opti.parameter(3, 1);  % Target 
 
+u_prev_param = opti.parameter(4, 1);
+
 % Inserisco vincoli
 opti.subject_to(X(:,1) == x0_param); % Stato di partenza
 for k = 1:N
@@ -70,10 +75,20 @@ opti.subject_to(-limite_angoli <= X(4:5, :) <= limite_angoli); % Limiti angoli (
 % Funzioni di costo
 cost = 0;
 for k = 1:N
-    err_pos = X(1:3, k) - target_pos;
-    delta_u = U(:, k) - F_eq; 
+    if k == 1
+        delta_u = U(:, 1) - u_prev_param; 
+    else
+        delta_u = U(:, k) - U(:, k-1);
+    end
+    
+    err_pos = X(1:3, k) - target_pos; % Calcola l'errore di posizione
     % Priorità è la posizione, r è molto piccolo
     cost = cost + err_pos' * Q_pos * err_pos + delta_u' * R_mot * delta_u; % costo ( equivale alla sommatoria della teoria )
+
+    % Al posto di x uso errore ( perche non deve andare all'origine ) e per
+    % u uso delta perche se raggiumge target deve comunque mantenere
+    % motori ON ( altrimenti arrivato all'obiettivo spegnerebbe tutto e il
+    % drone cadrebbe )
     % Non metto vinvolo terminale perche altrimenti sarebbe difficilmente
     % raggiungibile e potrebbe non trovare una soluzione --> aumento N
 end
