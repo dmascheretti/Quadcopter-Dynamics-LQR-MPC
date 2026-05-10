@@ -1,0 +1,42 @@
+
+# File di autosalvataggio e backup
+*.asv
+*.m~
+*.bak
+
+# Cache di Simulink (Assolutamente da ignorare, cambiano sempre)
+*.slxc
+slprj/
+catcache/
+
+# File di log ed errori
+*.log
+*.err
+crash_dumps/
+diag/
+
+# ==========================================
+# FILE COMPILATI (Se usi MEX o CasADi in C)
+# ==========================================
+*.mexw64
+*.mexa64
+*.mexmaci64
+*.exe
+*.dll
+*.o
+*.so
+
+# ==========================================
+# IMPOSTAZIONI LOCALI E SISTEMA OPERATIVO
+# ==========================================
+.SimulinkProject/
+Desktop.ini
+Thumbs.db
+.DS_Store
+
+# ==========================================
+# ATTENZIONE AI FILE .mat
+# ==========================================
+# Scommenta la riga sotto (togli il #) SOLO SE vuoi ignorare TUTTI i file dati.
+# Altrimenti lasciala così, in modo da poter caricare su GitHub i tuoi "workspace.mat" necessari per avviare il modello.
+# *.mat
