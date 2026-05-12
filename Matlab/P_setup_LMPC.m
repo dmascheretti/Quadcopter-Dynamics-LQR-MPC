@@ -77,4 +77,6 @@ s_opts = struct('max_iter', 100, ...
                 'sb', 'yes', ...         
                 'print_user_options', 'no'); 
 
+opti.minimize(cost);
+
 opti.solver('ipopt', p_opts, s_opts);
