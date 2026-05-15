@@ -10,11 +10,19 @@ u_forze = [F1; F2; F3; F4];
 
 syms l c real % c coefficiente per il calcolo del tau yaw
 
+alpha_cant = deg2rad(2); 
+
 % Matrice che traforma T + momenti in forze
-Gamma = [  1,  1,  1,  1;   % T = F1 + F2 + F3 + F4
-           0,  l,  0, -l;   % tau_phi = l*F2 - l*F4 
-          -l,  0,  l,  0;   % tau_theta = -l*F1 + l*F3
-           c, -c,  c, -c ]; % tau_psi = c*F1 - c*F2 + c*F3 - c*F4
+ca = cos(alpha_cant);
+sa = sin(alpha_cant);
+
+% Matrice di Allocazione (Mixer Matrix) con Rotor Canting per config '+'
+Gamma = [
+       ca,      ca,      ca,      ca;         % T (Perdita di portanza per canting)
+        0,    l*ca,       0,   -l*ca;         % tau_phi (Rollio)
+    -l*ca,       0,    l*ca,       0;         % tau_theta (Beccheggio)
+ c*ca+l*sa, -c*ca-l*sa, c*ca+l*sa, -c*ca-l*sa % tau_psi (Imbardata)
+];
 
 display (Gamma);
 
@@ -39,7 +47,6 @@ x_sym = [q; q_dot];
 x_eq = zeros(12,1); 
 
 % Angolo di due gradi ipotetico 
-alpha_cant = deg2rad(2); 
 Forza_eq = (m_val * g_val) / (4 * cos(alpha_cant));
 u_forze_eq = [Forza_eq; Forza_eq; Forza_eq; Forza_eq];
 
