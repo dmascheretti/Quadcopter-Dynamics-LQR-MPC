@@ -6,7 +6,8 @@ parametri_drone;
 Ts  = 0.01;
 N   = 60;
 limite_angoli = deg2rad(22);
-F_eq = (m_val * g_val / 4) * ones(4,1);  % hover senza alpha_cant
+F_eq_val = (m_val * g_val) / (4 * cos(alpha_cant));
+F_eq = F_eq_val * ones(4,1);
 
 Q_pos = diag([30,  30,  30 ]);
 Q_vel = diag([15,  15,  15 ]);
@@ -50,12 +51,15 @@ for k = 1:N
 end
 opti.minimize(cost);
 
-p_opts = struct('expand', true, 'print_time', false);
-s_opts = struct('max_iter', 100, 'print_level', 0, ...
-                'sb', 'yes', 'print_user_options', 'no');
-opti.solver('ipopt', p_opts, s_opts);
+opts = struct();
+opts.qpsol = 'qrqp';             
+opts.expand = true;              
+opts.print_time = false;      
+opts.print_iteration = false; 
+opts.print_header = false;
 
-% ── Valori iniziali parametri (necessari per il primo passo) ──────
+opti.solver('sqpmethod', opts);
+
 sys_c = ss(A_lin, B_lin, eye(12), zeros(12,4));
 sys_d = c2d(sys_c, Ts, 'zoh');
 Ad    = sys_d.A;
@@ -66,3 +70,14 @@ opti.set_value(Bd_param,     Bd);
 opti.set_value(x0_param,     zeros(12,1));
 opti.set_value(target_pos,   [3;4;3]);
 opti.set_value(u_prev_param, F_eq);
+
+ingressi = {x0_param, target_pos, u_prev_param, Ad_param, Bd_param};
+
+uscite = {U(:,1)};
+
+nomi_in  = {'x_curr', 'target', 'u_prev', 'Ad', 'Bd'};
+nomi_out = {'U_opt'};
+
+F_mpc = opti.to_function('mpc_solver', ingressi, uscite, nomi_in, nomi_out);
+opts = struct('main', false, 'with_header', true); 
+F_mpc.generate('mpc_controller_code.c', opts);
