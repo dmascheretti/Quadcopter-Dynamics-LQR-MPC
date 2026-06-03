@@ -34,6 +34,12 @@ Desktop.ini
 Thumbs.db
 .DS_Store
 
+# Ignora i metadati dei progetti MATLAB
+resources/project/
+.matlab/
+
+Matlab/mathworks-Quadcopter-Drone-Model-Simscape-26.1.1.7/resources/project/**/*.xml
+
 # ==========================================
 # ATTENZIONE AI FILE .mat
 # ==========================================

@@ -1,7 +1,9 @@
-clear; clc;
+
 load('MAT/step4_workspace.mat');  % M_fun, C_fun, B_fun, G_n
 load('MAT/step7_workspace.mat');  % A_lin, B_lin, Gamma_num, F_eq
-parametri_drone;
+
+
+B_lin(9, :) = -B_lin(9, :);
 
 Ts  = 0.01;
 N   = 60;
@@ -9,10 +11,10 @@ limite_angoli = deg2rad(22);
 F_eq_val = (m_val * g_val) / (4 * cos(alpha_cant));
 F_eq = F_eq_val * ones(4,1);
 
-Q_pos = diag([30,  30,  30 ]);
+Q_pos = diag([100,  100,  100 ]);
 Q_vel = diag([15,  15,  15 ]);
-Q_ang = diag([150, 150, 150]);
-R_mot = diag([30,  30,  30, 30]);
+Q_ang = diag([20, 20, 20]);
+R_mot = diag([0.1,  0.1,  0.1, 0.1]);
 
 import casadi.*
 opti = casadi.Opti();
@@ -31,7 +33,7 @@ for k = 1:N
     opti.subject_to(X(:,k+1) == Ad_param*X(:,k) + Bd_param*(U(:,k) - F_eq));
 end
 
-opti.subject_to(0 <= U <= 12);
+opti.subject_to(0 <= U <= 40);
 opti.subject_to(-limite_angoli <= X(4:5, 2:end) <= limite_angoli);
 
 cost = 0;
@@ -54,10 +56,15 @@ opti.minimize(cost);
 opts = struct();
 opts.qpsol = 'qrqp';             
 opts.expand = true;              
+
 opts.print_time = false;      
 opts.print_iteration = false; 
 opts.print_header = false;
+opts.print_status = true;      
 
+opts.qpsol_options.print_iter = false; 
+opts.qpsol_options.print_header = false; 
+opts.qpsol_options.print_info = false;   
 opti.solver('sqpmethod', opts);
 
 sys_c = ss(A_lin, B_lin, eye(12), zeros(12,4));
@@ -71,13 +78,12 @@ opti.set_value(x0_param,     zeros(12,1));
 opti.set_value(target_pos,   [3;4;3]);
 opti.set_value(u_prev_param, F_eq);
 
-ingressi = {x0_param, target_pos, u_prev_param, Ad_param, Bd_param};
 
-uscite = {U(:,1)};
+% da fare:
+% cambiare lpv calcolando seti matrici ad ogni passo come foglio note
 
-nomi_in  = {'x_curr', 'target', 'u_prev', 'Ad', 'Bd'};
-nomi_out = {'U_opt'};
+% cambiare il blocco drone phys con uav toolbox o qualcoss di siile dando
+% solo ingressi
 
-F_mpc = opti.to_function('mpc_solver', ingressi, uscite, nomi_in, nomi_out);
-opts = struct('main', false, 'with_header', true); 
-F_mpc.generate('mpc_controller_code.c', opts);
+% altrimenti non va 
+xy_data_membrane = [-0.1 -0.1; 0.1 -0.1; 0.1 0.1; -0.1 0.1];
