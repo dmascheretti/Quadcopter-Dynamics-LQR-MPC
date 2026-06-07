@@ -1,14 +1,15 @@
-
 load('MAT/step4_workspace.mat');  % M_fun, C_fun, B_fun, G_n
 load('MAT/step7_workspace.mat');  % A_lin, B_lin, Gamma_num, F_eq
 
 
 B_lin(9, :) = -B_lin(9, :);
 
+m_val=drone_mass;
 Ts  = 0.01;
 N   = 60;
 limite_angoli = deg2rad(22);
-F_eq_val = (m_val * g_val) / (4 * cos(alpha_cant));
+% F_eq_val = (m_val * g_val) / (4 * cos(alpha_cant));
+F_eq_val = (m_val * g_val) / 4; % senza angolo nel simscape
 F_eq = F_eq_val * ones(4,1);
 
 Q_pos = diag([100,  100,  100 ]);
@@ -74,7 +75,7 @@ Bd    = sys_d.B;
 
 opti.set_value(Ad_param,     Ad);
 opti.set_value(Bd_param,     Bd);
-opti.set_value(x0_param,     zeros(12,1));
+opti.set_value(x0_param, [0; 0; 0.1; 0;0;0; 0;0;0; 0;0;0]);
 opti.set_value(target_pos,   [3;4;3]);
 opti.set_value(u_prev_param, F_eq);
 
@@ -87,3 +88,7 @@ opti.set_value(u_prev_param, F_eq);
 
 % altrimenti non va 
 xy_data_membrane = [-0.1 -0.1; 0.1 -0.1; 0.1 0.1; -0.1 0.1];
+
+
+% creo simulatore mujoco, dati in documentazione mit, calcolo matrici in
+% phton, aggiorno dati e metto mpc
