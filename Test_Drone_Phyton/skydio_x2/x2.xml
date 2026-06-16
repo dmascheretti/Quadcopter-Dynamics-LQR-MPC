@@ -6,7 +6,7 @@
   <default>
     <default class="x2">
       <geom mass="0"/>
-      <motor ctrlrange="0 13"/>
+      <motor ctrlrange="0 13"/>9
       <mesh scale="0.01 0.01 0.01"/>
       <default class="visual">
         <geom group="2" type="mesh" contype="0" conaffinity="0"/>
@@ -44,6 +44,37 @@
   <body name="target_waypoint" mocap="true" pos="0 0 1">
         <geom type="sphere" size="0.05" rgba="1 0 0 0.5" contype="0" conaffinity="0"/>
     </body>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         OSTACOLI STATICI per i test di percezione LiDAR e di
+         obstacle avoidance con l'MPC. Sono geometrie solide
+         (contype/conaffinity attivi di default): il drone collide
+         fisicamente se le urta, e i raggi del LiDAR (mj_ray) le
+         intercettano correttamente.
+
+         ostacolo_1: cilindro singolo frontale, per i primi test
+                     di rilevamento e validazione del LiDAR.
+         ostacolo_gate_sx / ostacolo_gate_dx: coppia di cilindri che
+                     formano un "cancello" — scenario per verificare
+                     se l'MPC trova spazio per passare in mezzo o
+                     decide di girare attorno a uno dei due.
+    ═══════════════════════════════════════════════════════════ -->
+
+    <body name="ostacolo_1" pos="2.0 0 0.75">
+        <geom type="cylinder" size="0.15 0.75" rgba="0.8 0.2 0.2 1"
+              contype="1" conaffinity="1"/>
+    </body>
+
+    <body name="ostacolo_gate_sx" pos="4.0 0.5 0.75">
+        <geom type="cylinder" size="0.15 0.75" rgba="0.2 0.6 0.8 1"
+              contype="1" conaffinity="1"/>
+    </body>
+
+    <body name="ostacolo_gate_dx" pos="4.0 -0.5 0.75">
+        <geom type="cylinder" size="0.15 0.75" rgba="0.2 0.6 0.8 1"
+              contype="1" conaffinity="1"/>
+    </body>
+
     <body name="x2" pos="0 0 0.1" childclass="x2">
       <freejoint/>
       <camera name="track" pos="-1 0 .5" xyaxes="0 -1 0 1 0 2" mode="trackcom"/>

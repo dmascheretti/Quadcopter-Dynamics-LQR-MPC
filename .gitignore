@@ -3,6 +3,7 @@
 *.asv
 *.m~
 *.bak
+*.pyc
 
 # Cache di Simulink (Assolutamente da ignorare, cambiano sempre)
 *.slxc
@@ -14,6 +15,11 @@ catcache/
 *.err
 crash_dumps/
 diag/
+
+# Ambienti virtuali
+venv/
+.venv/
+env/
 
 # ==========================================
 # FILE COMPILATI (Se usi MEX o CasADi in C)

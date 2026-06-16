@@ -18,7 +18,7 @@ else:
         while viewer.is_running():
             step_start = time.time()
             
-            # --- 1. LETTURA DELLO STATO (Sensori) ---
+            # 1. Lettura dello stato attuale del drone (simula i sensori)
             # Posizione lineare (X, Y, Z)
             pos = data.qpos[0:3]
             
@@ -38,16 +38,16 @@ else:
             # [X, Y, Z, Roll, Pitch, Yaw, Vx, Vy, Vz, Wx, Wy, Wz]
             x_curr = np.concatenate((pos, euler, vel, ang_vel))
             
-            # --- 2. IL CERVELLO (CasADi MPC) ---
-            # Qui inserirai la chiamata alla tua funzione MPC tradotta in Python.
-            # Esempio fittizio:
-            # U_ottimo = mio_mpc_calcola(x_curr, target)
+            # 2. Calcolo del comando (logica del controllore)
+            # In un'implementazione completa, qui verrebbe chiamato il controllore MPC.
+            # Esempio:
+            # U_ottimo = mpc.calcola(x_curr, target)
             
-            # Per ora, mettiamo un comando fisso per non farlo cadere
-            # ATTENZIONE: 100 è probabilmente un valore enorme. Inizia con valori più bassi.
+            # Per questo test, applichiamo un comando fisso per mantenere
+            # il drone in una sorta di hover approssimativo.
             U_ottimo = [6.0, 6.0, 6.0, 6.0] 
             
-            # --- 3. AZIONE ---
+            # 3. Applicazione del comando ai motori
             data.ctrl[:] = U_ottimo
             
             # Avanza la fisica
