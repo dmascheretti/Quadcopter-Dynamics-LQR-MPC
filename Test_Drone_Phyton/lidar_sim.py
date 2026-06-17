@@ -11,6 +11,31 @@ il controllo verrà fatta in main_volo.py in uno step successivo,
 una volta verificato che la percezione funzioni e si visualizzi
 correttamente.
 
+IMPORTANTE — esclusione del marker del target dal raycasting
+---------------------------------------------------------------
+La sfera che visualizza il target (target_waypoint nell'XML) è una
+geometria nella scena MuJoCo. I flag contype="0" conaffinity="0" la
+rendono fisicamente non collidibile, ma NON la escludono dal
+raycasting di mj_ray — quei flag riguardano solo la fisica dei
+contatti, non la visibilità ai raggi. Senza un'esclusione esplicita,
+quando il drone si avvicina al proprio target il LiDAR lo rileva
+come un ostacolo, generando un conflitto diretto nel costo dell'MPC
+tra il termine attrattivo (target) e quello repulsivo (ostacolo),
+quasi sovrapposti e in competizione numerica — causa di un crash
+del solver osservato in fase di test.
+
+NOTA su un primo tentativo di fix, poi corretto: inizialmente la
+sfera era stata assegnata a un gruppo geom dedicato (group=4),
+escluso dal raycasting tramite la maschera geomgroup di mj_ray.
+Questo però rendeva la sfera anche INVISIBILE nel viewer 3D, perché
+il parametro group in MuJoCo controlla contemporaneamente sia il
+raycasting sia la visibilità grafica — non sono canali separati.
+La sfera è stata quindi riportata al gruppo di default (0, sempre
+visibile), e l'esclusione dal LiDAR è ora realizzata identificando
+il body_id del target (passato come geomid_target_body al
+costruttore di LidarSim) e scartando il risultato di mj_ray quando
+il geomid colpito appartiene a quel body specifico.
+
 Funzionamento di mj_ray
 ------------------------
 mujoco.mj_ray(model, data, pnt, vec, geomgroup, flg_static,
@@ -61,15 +86,52 @@ class LidarSim:
     bodyexclude  : int   — ID del body da escludere dalla scansione
                             (tipicamente il corpo del drone stesso,
                             per evitare auto-intersezioni)
+    escludi_gruppi : list[int] — gruppi geom (0-5) da escludere dal
+                            raycasting. Di default esclude il gruppo 4,
+                            riservato a elementi puramente visivi come
+                            la sfera del target. Senza questa esclusione,
+                            il LiDAR rileverebbe il marker del target
+                            stesso come un ostacolo quando il drone gli
+                            si avvicina, generando un conflitto diretto
+                            tra il termine attrattivo (target) e quello
+                            repulsivo (ostacolo) nella funzione di costo
+                            dell'MPC — la causa di un crash del solver
+                            osservato in fase di test, dato che i due
+                            termini diventano quasi sovrapposti e
+                            numericamente in competizione diretta.
+    escludi_body_ids : list[int] — ID dei body le cui geometrie devono
+                            essere ignorate dal LiDAR (oltre al body
+                            del drone stesso, passato separatamente
+                            in bodyexclude). Tipicamente qui va l'ID
+                            del body "target_waypoint": la sua sfera
+                            visiva resta visibile a schermo (gruppo
+                            geom di default) ma viene scartata dal
+                            raycasting per evitare che il drone la
+                            rilevi come un ostacolo quando le si
+                            avvicina, generando un conflitto diretto
+                            tra il termine attrattivo (target) e
+                            quello repulsivo (ostacolo) nel costo
+                            dell'MPC — causa di un crash del solver
+                            osservato in fase di test.
     """
 
     def __init__(self, model, n_raggi=16, settore_deg=360.0,
-                 range_max=5.0, bodyexclude=-1):
+                 range_max=5.0, bodyexclude=-1, escludi_body_ids=()):
         self.model       = model
         self.n_raggi     = n_raggi
         self.settore_rad = np.deg2rad(settore_deg)
         self.range_max   = range_max
         self.bodyexclude = bodyexclude
+
+        # ID dei geom (non dei body!) appartenenti ai body da
+        # escludere. mj_ray restituisce un geomid, quindi qui
+        # pre-calcoliamo la corrispondenza geom -> body una volta,
+        # per evitare di rifare la ricerca ad ogni raggio scansionato.
+        self._geomid_da_escludere = set()
+        for body_id in escludi_body_ids:
+            for geom_id in range(model.ngeom):
+                if model.geom_bodyid[geom_id] == body_id:
+                    self._geomid_da_escludere.add(geom_id)
 
         # Angoli dei raggi nel settore di scansione.
         # Per una scansione completa a 360°, endpoint=False evita di
@@ -84,6 +146,65 @@ class LidarSim:
 
         # Buffer riutilizzabile richiesto dalla firma di mj_ray
         self._geomid_buf = np.zeros(1, dtype=np.int32)
+
+    # ------------------------------------------------------------
+    def _spara_raggio(self, data, origine, direzione, max_tentativi=4):
+        """
+        Spara un singolo raggio, ignorando eventuali colpi su geomid
+        appartenenti ai body esclusi (es. il marker del target).
+
+        mj_ray non supporta nativamente l'esclusione di più body in
+        una sola chiamata (bodyexclude accetta un solo ID). Per
+        escludere anche il target, ripetiamo il raggio "spostando"
+        virtualmente l'origine appena oltre il punto colpito quando
+        quel punto appartiene a un geom escluso — così il raggio
+        continua a propagarsi e può rilevare un eventuale ostacolo
+        reale posizionato oltre il marker del target.
+
+        Ritorna (distanza_totale, geomid_colpito) — distanza
+        cumulata dall'origine ORIGINALE del raggio, non dall'ultimo
+        punto di ripartenza.
+        """
+        origine_corrente = origine.copy()
+        distanza_accumulata = 0.0
+
+        for _ in range(max_tentativi):
+            dist = mujoco.mj_ray(
+                self.model, data,
+                origine_corrente, direzione,
+                None,                  # nessun filtro di gruppo: la
+                                        # sfera target resta nel
+                                        # gruppo di default e quindi
+                                        # visibile/raggiungibile, la
+                                        # escludiamo qui sotto via geomid
+                1,                     # flg_static: includi geometrie statiche
+                self.bodyexclude,
+                self._geomid_buf
+            )
+
+            if dist < 0:
+                # Nessun colpo lungo il resto del raggio
+                return -1.0, -1
+
+            geomid = int(self._geomid_buf[0])
+
+            if geomid not in self._geomid_da_escludere:
+                # Colpo "vero": un ostacolo reale, non il target
+                return distanza_accumulata + dist, geomid
+
+            # Colpo su geometria esclusa (es. sfera target): avanza
+            # l'origine appena oltre quel punto e ripeti il raggio
+            margine = 1e-3
+            origine_corrente = (origine_corrente
+                                 + (dist + margine) * direzione)
+            distanza_accumulata += dist + margine
+
+            if distanza_accumulata > self.range_max:
+                return -1.0, -1
+
+        # Troppi tentativi (caso raro, es. geometrie escluse
+        # sovrapposte): consideriamo il raggio libero
+        return -1.0, -1
 
     # ------------------------------------------------------------
     def scansiona(self, data, drone_pos, yaw=0.0, quota_scan=None):
@@ -144,14 +265,7 @@ class LidarSim:
                 0.0
             ])
 
-            dist = mujoco.mj_ray(
-                self.model, data,
-                origine, direzione,
-                None,                  # geomgroup: nessun filtro
-                1,                     # flg_static: includi geometrie statiche
-                self.bodyexclude,
-                self._geomid_buf
-            )
+            dist, geom_colpito = self._spara_raggio(data, origine, direzione)
 
             if dist >= 0 and dist <= self.range_max:
                 distanze[i] = dist

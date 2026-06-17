@@ -48,16 +48,28 @@ UDP_PORT = 5005
 
 # Configurazione LiDAR
 ABILITA_LIDAR     = True
-LIDAR_N_RAGGI     = 16      # numero di raggi nella scansione completa
+LIDAR_N_RAGGI     = 32      # numero di raggi nella scansione completa
+                             # (alzato da 16: con 16 raggi la spaziatura
+                             # angolare di 22.5° era più larga della
+                             # larghezza apparente di un ostacolo
+                             # cilindrico tipico a 2m di distanza, ~9°.
+                             # Il drone "perdeva" l'ostacolo tra un
+                             # raggio e l'altro durante il movimento,
+                             # causando salti discreti nel punto
+                             # rilevato e oscillazioni nel comando MPC)
 LIDAR_SETTORE_DEG = 360.0   # scansione completa a 360°
                              # (necessaria: il drone trasla in ogni
                              # direzione senza dover ruotare in yaw,
                              # quindi un settore frontale lascerebbe
                              # punti ciechi su fianchi e retro)
 LIDAR_RANGE_MAX   = 5.0     # distanza massima rilevabile [m]
-LIDAR_OGNI_N_STEP = 2       # esegui la scansione ogni N step fisici
-                             # (riduce il costo computazionale; il
-                             # disegno usa l'ultima scansione disponibile)
+LIDAR_OGNI_N_STEP = 1       # esegui la scansione ogni step fisico
+                             # (era 2: con l'ostacolo vicino al target,
+                             # un rilevamento più frequente riduce il
+                             # ritardo tra movimento del drone e
+                             # aggiornamento del punto di ostacolo
+                             # passato all'MPC, contribuendo a
+                             # comandi più stabili)
 
 # Inizializzazione del controllore MPC
 print("Inizializzazione MPC LPV...")
@@ -77,6 +89,16 @@ data  = mujoco.MjData(model)
 # drone stesso all'origine)
 body_id_x2 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "x2")
 
+# ID del body della sfera target: serve per escludere la sua
+# geometria dal raycasting del LiDAR. La sfera resta visibile a
+# schermo (gruppo geom di default), ma senza questa esclusione il
+# drone la rileverebbe come un ostacolo quando le si avvicina,
+# generando un conflitto diretto nel costo dell'MPC tra il termine
+# attrattivo (target) e quello repulsivo (ostacolo).
+body_id_target = mujoco.mj_name2id(
+    model, mujoco.mjtObj.mjOBJ_BODY, "target_waypoint"
+)
+
 # Inizializzazione del LiDAR
 if ABILITA_LIDAR:
     lidar = LidarSim(
@@ -85,6 +107,7 @@ if ABILITA_LIDAR:
         settore_deg=LIDAR_SETTORE_DEG,
         range_max=LIDAR_RANGE_MAX,
         bodyexclude=body_id_x2,
+        escludi_body_ids=(body_id_target,),
     )
     ultima_scansione = None
     print(f"LiDAR attivo: {LIDAR_N_RAGGI} raggi, "
@@ -204,8 +227,31 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
 
             x_curr = np.concatenate([pos, euler, vel, ang_vel])
 
-            # Calcolo comando ottimale
-            u_opt  = mpc.calcola(x_curr, target, u_prev)
+            # Scansione LiDAR — eseguita PRIMA della chiamata all'MPC,
+            # così il controllore usa il rilevamento più recente
+            # possibile (non quello del passo precedente) per il
+            # termine repulsivo nel costo.
+            if ABILITA_LIDAR and loop_count % LIDAR_OGNI_N_STEP == 0:
+                yaw_corrente = euler[2]
+                ultima_scansione = lidar.scansiona(
+                    data, pos, yaw=yaw_corrente
+                )
+
+            # Punto di ostacolo da passare all'MPC: il più vicino
+            # rilevato nell'ultima scansione disponibile. None se il
+            # LiDAR è disabilitato o non ha ancora scansionato nulla
+            # (primo step) — in tal caso mpc.calcola() usa il default
+            # "lontanissimo" che rende la repulsione trascurabile.
+            obs_pos_lidar = None
+            if ABILITA_LIDAR and ultima_scansione is not None:
+                if ultima_scansione['hit'][ultima_scansione['idx_min']]:
+                    obs_pos_lidar = ultima_scansione['punti'][
+                        ultima_scansione['idx_min']
+                    ]
+
+            # Calcolo comando ottimale (con eventuale repulsione ostacolo)
+            u_opt  = mpc.calcola(x_curr, target, u_prev,
+                                  obs_pos=obs_pos_lidar)
             u_prev = u_opt
 
             # Log dati
@@ -222,13 +268,6 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
                     if (ABILITA_LIDAR and ultima_scansione is not None)
                     else np.nan
                 )
-
-        # Scansione LiDAR (a frequenza ridotta rispetto al fisico)
-        if ABILITA_LIDAR and loop_count % LIDAR_OGNI_N_STEP == 0:
-            yaw_corrente = euler[2] if loop_count > 0 else 0.0
-            ultima_scansione = lidar.scansiona(
-                data, pos, yaw=yaw_corrente
-            )
 
         # Azzeramento scena utente e ridisegno di tutti gli elementi
         # grafici aggiuntivi (LiDAR + traiettoria MPC) in questo frame

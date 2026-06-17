@@ -42,7 +42,14 @@
     
     <geom name="floor" pos="0 0 0" size="0 0 1" type="plane" material="matplane" condim="3"/>
   <body name="target_waypoint" mocap="true" pos="0 0 1">
-        <geom type="sphere" size="0.05" rgba="1 0 0 0.5" contype="0" conaffinity="0"/>
+        <!-- group lasciato di default (0): il parametro group in
+             MuJoCo controlla SIA il raycasting SIA la visibilità nel
+             viewer. Usare un gruppo dedicato per nascondere questa
+             sfera al LiDAR la rendeva anche invisibile a schermo.
+             L'esclusione dal LiDAR è invece gestita via geomid +
+             nome del body in lidar_sim.py (vedi quel modulo). -->
+        <geom type="sphere" size="0.05" rgba="1 0 0 0.5"
+              contype="0" conaffinity="0"/>
     </body>
 
     <!-- ═══════════════════════════════════════════════════════════
