@@ -70,6 +70,24 @@ LIDAR_OGNI_N_STEP = 1       # esegui la scansione ogni step fisico
                              # aggiornamento del punto di ostacolo
                              # passato all'MPC, contribuendo a
                              # comandi più stabili)
+LIDAR_DIST_ATTIVAZIONE = 2.5 # [m] soglia di distanza: ostacoli oltre
+                              # questa distanza NON vengono passati
+                              # all'MPC come penalità repulsiva. Vengono
+                              # comunque visualizzati dal viewer. Evita
+                              # che il drone "abbia paura" di ostacoli
+                              # lontani che non interferiscono ancora
+                              # con la traiettoria.
+
+# Bypass waypoint: quando un ostacolo blocca il percorso diretto
+# drone→target, si sostituisce temporaneamente il target con un
+# punto laterale libero. L'MPC non deve più trovare una traiettoria
+# "attraverso" l'ostacolo, problema che causa divergenze del solver.
+BYPASS_MARGINE    = 1.2   # [m] distanza laterale del waypoint di bypass
+                           # dall'asse drone→target proiettato sull'ostacolo
+BYPASS_ANGOLO_MAX = 0.40  # [rad] ≈ 23°: se il raggio LiDAR più vicino
+                           # alla direzione del target sta entro questo
+                           # angolo E colpisce qualcosa prima del target,
+                           # il percorso è considerato bloccato
 
 # Inizializzazione del controllore MPC
 print("Inizializzazione MPC LPV...")
@@ -151,6 +169,84 @@ if ABILITA_LOG:
 u_prev     = F_eq * np.ones(4)
 loop_count = 0
 step_fisica = 1  # MPC gira ogni step fisico (Ts=0.01s)
+
+def calcola_target_effettivo(drone_pos, target_reale, scan):
+    """
+    Restituisce il target effettivo da passare all'MPC.
+
+    Se un ostacolo blocca il percorso diretto drone→target (rilevato
+    dal LiDAR), restituisce un waypoint laterale (bypass) posizionato
+    accanto all'ostacolo sul lato con più spazio libero. In questo modo
+    l'MPC riceve un target raggiungibile senza dover "passare attraverso"
+    l'ostacolo, evitando il conflitto attrattivo/repulsivo che causa
+    divergenze del solver e hover di emergenza.
+
+    Quando il percorso è libero (nessun colpo LiDAR verso il target),
+    restituisce il target reale invariato. Il bypass si disattiva
+    automaticamente non appena il raggio LiDAR verso il target risulta
+    libero, cioè quando il drone ha aggirato l'ostacolo.
+    """
+    if scan is None:
+        return target_reale.copy()
+
+    dir_t  = target_reale - drone_pos
+    dist_t = np.linalg.norm(dir_t)
+    if dist_t < 0.3:
+        return target_reale.copy()  # già vicino al target, nessun bypass
+
+    dir_tn    = dir_t / dist_t
+    ang_target = np.arctan2(dir_tn[1], dir_tn[0])
+
+    angoli = scan['angoli_abs']
+    delta  = (angoli - ang_target + np.pi) % (2 * np.pi) - np.pi
+    idx    = int(np.argmin(np.abs(delta)))
+
+    # Il percorso è libero se: nessun colpo, oppure il colpo è oltre
+    # il target (ostacolo dietro il target, non blocca), oppure nessun
+    # raggio punta abbastanza vicino alla direzione del target.
+    if np.abs(delta[idx]) > BYPASS_ANGOLO_MAX:
+        return target_reale.copy()
+    if not scan['hit'][idx]:
+        return target_reale.copy()
+    if scan['distanze'][idx] >= dist_t - 0.2:
+        return target_reale.copy()
+
+    # Ostacolo blocca il percorso: calcola waypoint laterale
+    obs_pt = scan['punti'][idx]
+    proj   = drone_pos + np.dot(obs_pt - drone_pos, dir_tn) * dir_tn
+
+    # Direzioni perpendicolari nel piano XY
+    perp_r = np.array([ dir_tn[1], -dir_tn[0], 0.0])
+    perp_l = np.array([-dir_tn[1],  dir_tn[0], 0.0])
+
+    # Scegli il lato più aperto confrontando i raggi LiDAR laterali
+    ang_r = np.arctan2(perp_r[1], perp_r[0])
+    ang_l = np.arctan2(perp_l[1], perp_l[0])
+    dr    = (angoli - ang_r + np.pi) % (2 * np.pi) - np.pi
+    dl    = (angoli - ang_l + np.pi) % (2 * np.pi) - np.pi
+    d_r   = scan['distanze'][int(np.argmin(np.abs(dr)))]
+    d_l   = scan['distanze'][int(np.argmin(np.abs(dl)))]
+    perp  = perp_r if d_r >= d_l else perp_l
+
+    bypass    = proj + perp * BYPASS_MARGINE
+    bypass[2] = drone_pos[2]  # mantieni la quota corrente del drone
+    return bypass
+
+
+def visualizza_bypass(viewer, bypass_pos):
+    """Disegna una sfera ciano in corrispondenza del waypoint di bypass."""
+    if viewer.user_scn.ngeom >= viewer.user_scn.maxgeom:
+        return
+    mujoco.mjv_initGeom(
+        viewer.user_scn.geoms[viewer.user_scn.ngeom],
+        type=mujoco.mjtGeom.mjGEOM_SPHERE,
+        size=np.array([0.12, 0.0, 0.0]),
+        pos=np.array(bypass_pos, dtype=np.float64),
+        mat=np.eye(3).flatten(),
+        rgba=np.array([0.0, 0.9, 0.9, 0.8])
+    )
+    viewer.user_scn.ngeom += 1
+
 
 def visualizza_traiettoria(viewer, punti):
     """Disegna sfere arancioni lungo la traiettoria predetta dall'MPC."""
@@ -244,13 +340,22 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             # "lontanissimo" che rende la repulsione trascurabile.
             obs_pos_lidar = None
             if ABILITA_LIDAR and ultima_scansione is not None:
-                if ultima_scansione['hit'][ultima_scansione['idx_min']]:
-                    obs_pos_lidar = ultima_scansione['punti'][
-                        ultima_scansione['idx_min']
-                    ]
+                idx = ultima_scansione['idx_min']
+                if (ultima_scansione['hit'][idx]
+                        and ultima_scansione['dist_min'] < LIDAR_DIST_ATTIVAZIONE):
+                    obs_pos_lidar = ultima_scansione['punti'][idx]
+
+            # Bypass waypoint: se un ostacolo blocca il percorso
+            # diretto verso il target, sostituisce temporaneamente
+            # il target con un punto laterale libero, evitando il
+            # conflitto attrattivo/repulsivo che causa divergenze
+            # del solver quando il target è dietro/vicino a un ostacolo.
+            target_eff = calcola_target_effettivo(
+                pos, target, ultima_scansione
+            )
 
             # Calcolo comando ottimale (con eventuale repulsione ostacolo)
-            u_opt  = mpc.calcola(x_curr, target, u_prev,
+            u_opt  = mpc.calcola(x_curr, target_eff, u_prev,
                                   obs_pos=obs_pos_lidar)
             u_prev = u_opt
 
@@ -275,6 +380,13 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
 
         if ABILITA_LIDAR and ultima_scansione is not None:
             visualizza_lidar(viewer, ultima_scansione)
+
+        # Visualizza sfera ciano se il bypass è attivo (target_eff != target)
+        try:
+            if np.linalg.norm(target_eff - target) > 0.05:
+                visualizza_bypass(viewer, target_eff)
+        except NameError:
+            pass  # target_eff non ancora calcolato al primo frame
 
         if mpc.X_sol is not None:
             traj = mpc.X_sol[0:3, :].T

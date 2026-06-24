@@ -90,7 +90,7 @@ _LIMITE_ANG   = np.deg2rad(22.0)   # ±22°
 #   costo_ostacolo(X_k) = W_OBS * exp(-||X_k[0:3] - obs_pos||² / (2*SIGMA_OBS²))
 #
 _SIGMA_OBS    = 0.8     # "raggio" del campo repulsivo [m]
-_W_OBS        = 4000.0  # peso della repulsione nel costo totale
+_W_OBS        = 2000.0  # peso della repulsione nel costo totale
 
 
 class MPC_Lineare:
@@ -169,10 +169,14 @@ class MPC_Lineare:
         u_prev_p = opti.parameter(4)       # comando precedente
         Ad_p     = opti.parameter(12, 12)  # matrice A discreta (LPV)
         Bd_p     = opti.parameter(12,  4)  # matrice B discreta (LPV)
-        obs_pos_p = opti.parameter(3)      # posizione ostacolo più vicino
+        obs_pos_p  = opti.parameter(3)     # posizione ostacolo più vicino
                                             # (rilevato dal LiDAR); usato
                                             # solo nel termine repulsivo
                                             # del costo, nessun vincolo
+        peso_obs_p = opti.parameter()      # peso scalare direzionale: riduce
+                                            # la repulsione se l'ostacolo non
+                                            # è nella direzione del target
+                                            # (calcolato in calcola())
 
         # Vincolo sullo stato iniziale
         opti.subject_to(X[:, 0] == x0_p)
@@ -224,12 +228,14 @@ class MPC_Lineare:
                    + vel_lin.T @ Q_vel_mx @ vel_lin
                    + delta_u.T @ R_mot_mx @ delta_u)
 
-            # ── Repulsione ostacolo (penalità di costo, non vincolo) ──
-            # Applicata su tutto l'orizzonte di predizione: il drone
-            # "vede" l'ostacolo nella sua traiettoria futura e inizia
-            # a deviare con anticipo, non solo quando è già vicino.
-            dist_sq_obs = ca.sumsqr(X[0:3, k] - obs_pos_p)
-            cost += _W_OBS * ca.exp(-dist_sq_obs / (2 * _SIGMA_OBS**2))
+            # ── Repulsione ostacolo (solo primi N//3 step) ──
+            # Limitare ai primi ~0.2s di predizione riduce la magnitudine
+            # totale del costo repulsivo di 3x rispetto all'orizzonte
+            # completo, ribilanciandolo con il tracking cost.
+            # Il peso peso_obs_p è scalato direzionalmente in calcola().
+            if k < self.N // 3:
+                dist_sq_obs = ca.sumsqr(X[0:3, k] - obs_pos_p)
+                cost += peso_obs_p * ca.exp(-dist_sq_obs / (2 * _SIGMA_OBS**2))
 
         opti.minimize(cost)
 
@@ -265,7 +271,8 @@ class MPC_Lineare:
         self.u_prev_p = u_prev_p
         self.Ad_p     = Ad_p
         self.Bd_p     = Bd_p
-        self.obs_pos_p = obs_pos_p
+        self.obs_pos_p  = obs_pos_p
+        self.peso_obs_p = peso_obs_p
 
         # Inizializzazione con matrici LTI (primo step)
         opti.set_value(self.Ad_p, self.Ad0)
@@ -274,7 +281,8 @@ class MPC_Lineare:
         # Inizializzazione ostacolo: punto lontanissimo, repulsione
         # numericamente nulla finché main_volo.py non aggiorna il
         # parametro con un rilevamento reale del LiDAR
-        opti.set_value(self.obs_pos_p, np.array([1e3, 1e3, 1e3]))
+        opti.set_value(self.obs_pos_p,  np.array([1e3, 1e3, 1e3]))
+        opti.set_value(self.peso_obs_p, _W_OBS)
 
     def calcola(self, x_curr, target_pos, u_prev, obs_pos=None):
         """
@@ -348,9 +356,25 @@ class MPC_Lineare:
                         + (1 - ALPHA_SMOOTH) * self._obs_pos_filtrato
                     )
             self.opti.set_value(self.obs_pos_p, self._obs_pos_filtrato)
+
+            # Peso direzionale: se l'ostacolo è dietro o molto laterale
+            # rispetto alla direzione del target, la repulsione è ridotta
+            # (il drone non deve deviare per ostacoli che non ostruiscono
+            # il percorso). cos_angolo ∈ [0.05, 1.0] → peso ∈ [5%, 100%].
+            dir_target = target_pos - x_curr[0:3]
+            dir_obs    = self._obs_pos_filtrato - x_curr[0:3]
+            n_t = np.linalg.norm(dir_target)
+            n_o = np.linalg.norm(dir_obs)
+            if n_t > 0.1 and n_o > 0.1:
+                cos_angolo = np.dot(dir_target, dir_obs) / (n_t * n_o)
+                peso_dir   = float(np.clip(cos_angolo, 0.05, 1.0))
+            else:
+                peso_dir = 1.0
+            self.opti.set_value(self.peso_obs_p, _W_OBS * peso_dir)
         else:
             self._obs_pos_filtrato = None
-            self.opti.set_value(self.obs_pos_p, np.array([1e3, 1e3, 1e3]))
+            self.opti.set_value(self.obs_pos_p,  np.array([1e3, 1e3, 1e3]))
+            self.opti.set_value(self.peso_obs_p, _W_OBS)
 
         # ── DEBUG diagnostico (attivabile con debug_obstacle=True) ──
         # Confronta il peso "attrattivo" verso il target con il peso
