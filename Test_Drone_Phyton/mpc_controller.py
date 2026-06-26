@@ -370,7 +370,17 @@ class MPC_Lineare:
                 peso_dir   = float(np.clip(cos_angolo, 0.05, 1.0))
             else:
                 peso_dir = 1.0
-            self.opti.set_value(self.peso_obs_p, _W_OBS * peso_dir)
+            # Scala finale: riduce la repulsione man mano che il drone
+            # si avvicina al target. Quando dist < 2*sigma, il tracking
+            # domina e il drone riesce ad attestarsi anche se il target
+            # è vicino a un ostacolo, evitando lo stallo attrattivo/
+            # repulsivo che causa divergenze del solver.
+            dist_al_target = np.linalg.norm(target_pos - x_curr[0:3])
+            scala_target   = float(np.clip(
+                dist_al_target / (2.0 * _SIGMA_OBS), 0.0, 1.0
+            ))
+            self.opti.set_value(self.peso_obs_p,
+                                 _W_OBS * peso_dir * scala_target)
         else:
             self._obs_pos_filtrato = None
             self.opti.set_value(self.obs_pos_p,  np.array([1e3, 1e3, 1e3]))
@@ -446,24 +456,32 @@ class MPC_Lineare:
             self.U_sol = sol.value(self.U_var)
 
         except Exception as e:
-            # Fallback sicuro: hovering
-            # Resetta il warm start per non propagare una soluzione errata
             err_str = str(e)
-            # Sopprimi il traceback lungo di CasADi, mostra solo la causa
             causa = err_str.split("\n")[-2] if "\n" in err_str else err_str
             info_salto = (" [TARGET CAMBIATO BRUSCAMENTE]"
                           if target_cambiato_bruscamente else "")
             print(f"[MPC_LPV] Solver fallito "
                   f"(phi={np.rad2deg(phi):.1f}°, "
                   f"theta={np.rad2deg(theta):.1f}°){info_salto}: {causa}")
-            print("[MPC_LPV] Applico hover di emergenza.")
-            u_opt      = self.F_eq.copy()
-            self.X_sol = None
-            self.U_sol = None
-            # Re-inizializza il warm start con hovering per il prossimo step
-            self.opti.set_initial(
-                self.U_var,
-                np.tile(self.F_eq.reshape(-1, 1), (1, self.N))
-            )
+
+            if self.U_sol is not None:
+                # Fallback smooth: usa il secondo step della soluzione
+                # precedente invece di saltare a F_eq. Mantenere
+                # continuità nel comando evita l'impulso brusco che
+                # destabilizza il drone mentre IPOPT recupera.
+                u_opt = self.U_sol[:, min(1, self.U_sol.shape[1]-1)].copy()
+                print("[MPC_LPV] Fallback: secondo step soluzione precedente.")
+                # Shifta X_sol/U_sol per il warm start del prossimo step
+                self.X_sol = np.hstack([self.X_sol[:, 1:], self.X_sol[:, -1:]])
+                self.U_sol = np.hstack([self.U_sol[:, 1:], self.U_sol[:, -1:]])
+            else:
+                u_opt = self.F_eq.copy()
+                print("[MPC_LPV] Applico hover di emergenza.")
+                self.X_sol = None
+                self.U_sol = None
+                self.opti.set_initial(
+                    self.U_var,
+                    np.tile(self.F_eq.reshape(-1, 1), (1, self.N))
+                )
 
         return u_opt

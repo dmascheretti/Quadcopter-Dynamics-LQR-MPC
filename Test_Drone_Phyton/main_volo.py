@@ -82,12 +82,16 @@ LIDAR_DIST_ATTIVAZIONE = 2.5 # [m] soglia di distanza: ostacoli oltre
 # drone→target, si sostituisce temporaneamente il target con un
 # punto laterale libero. L'MPC non deve più trovare una traiettoria
 # "attraverso" l'ostacolo, problema che causa divergenze del solver.
-BYPASS_MARGINE    = 1.2   # [m] distanza laterale del waypoint di bypass
+BYPASS_MARGINE    = 1.4   # [m] distanza laterale del waypoint di bypass
                            # dall'asse drone→target proiettato sull'ostacolo
+                           # (alzato da 1.2: più margine riduce il rischio
+                           # che il bypass sia ancora nella zona repulsiva)
 BYPASS_ANGOLO_MAX = 0.40  # [rad] ≈ 23°: se il raggio LiDAR più vicino
                            # alla direzione del target sta entro questo
                            # angolo E colpisce qualcosa prima del target,
                            # il percorso è considerato bloccato
+BYPASS_ALPHA      = 0.35  # coefficiente smoothing esponenziale del bypass
+                           # 0=fisso sul valore precedente, 1=nessun filtro
 
 # Inizializzazione del controllore MPC
 print("Inizializzazione MPC LPV...")
@@ -170,56 +174,67 @@ u_prev     = F_eq * np.ones(4)
 loop_count = 0
 step_fisica = 1  # MPC gira ogni step fisico (Ts=0.01s)
 
+# Stato del bypass waypoint (persistente tra le chiamate)
+_bypass_pos_filtrato = None   # posizione bypass con smoothing esponenziale
+_bypass_attivo       = False  # True se il bypass era attivo allo step precedente
+
+
 def calcola_target_effettivo(drone_pos, target_reale, scan):
     """
     Restituisce il target effettivo da passare all'MPC.
 
-    Se un ostacolo blocca il percorso diretto drone→target (rilevato
-    dal LiDAR), restituisce un waypoint laterale (bypass) posizionato
-    accanto all'ostacolo sul lato con più spazio libero. In questo modo
-    l'MPC riceve un target raggiungibile senza dover "passare attraverso"
-    l'ostacolo, evitando il conflitto attrattivo/repulsivo che causa
-    divergenze del solver e hover di emergenza.
-
-    Quando il percorso è libero (nessun colpo LiDAR verso il target),
-    restituisce il target reale invariato. Il bypass si disattiva
-    automaticamente non appena il raggio LiDAR verso il target risulta
-    libero, cioè quando il drone ha aggirato l'ostacolo.
+    Se un ostacolo blocca il percorso diretto drone→target, calcola un
+    waypoint laterale (bypass) sul lato più aperto. Applica:
+    - smoothing esponenziale (BYPASS_ALPHA) per evitare salti bruschi
+      del target che invalidano il warm start di IPOPT
+    - isteresi sull'angolo di attivazione: il bypass si disattiva solo
+      quando il percorso è chiaramente libero (soglia x1.5), non appena
+      esce dalla zona borderline, evitando oscillazioni rapide on/off
     """
+    global _bypass_pos_filtrato, _bypass_attivo
+
     if scan is None:
+        _bypass_pos_filtrato = None
+        _bypass_attivo = False
         return target_reale.copy()
 
     dir_t  = target_reale - drone_pos
     dist_t = np.linalg.norm(dir_t)
     if dist_t < 0.3:
-        return target_reale.copy()  # già vicino al target, nessun bypass
+        _bypass_pos_filtrato = None
+        _bypass_attivo = False
+        return target_reale.copy()
 
-    dir_tn    = dir_t / dist_t
+    dir_tn     = dir_t / dist_t
     ang_target = np.arctan2(dir_tn[1], dir_tn[0])
 
     angoli = scan['angoli_abs']
     delta  = (angoli - ang_target + np.pi) % (2 * np.pi) - np.pi
     idx    = int(np.argmin(np.abs(delta)))
 
-    # Il percorso è libero se: nessun colpo, oppure il colpo è oltre
-    # il target (ostacolo dietro il target, non blocca), oppure nessun
-    # raggio punta abbastanza vicino alla direzione del target.
-    if np.abs(delta[idx]) > BYPASS_ANGOLO_MAX:
-        return target_reale.copy()
-    if not scan['hit'][idx]:
-        return target_reale.copy()
-    if scan['distanze'][idx] >= dist_t - 0.2:
+    # Isteresi: soglia più ampia per disattivare il bypass rispetto ad
+    # attivarlo, evitando oscillazioni rapide on/off quando il drone
+    # è sull'edge della zona di attivazione.
+    soglia_ang = BYPASS_ANGOLO_MAX * (1.5 if _bypass_attivo else 1.0)
+
+    bypass_necessario = (
+        np.abs(delta[idx]) <= soglia_ang
+        and scan['hit'][idx]
+        and scan['distanze'][idx] < dist_t - 0.2
+    )
+
+    if not bypass_necessario:
+        _bypass_pos_filtrato = None
+        _bypass_attivo = False
         return target_reale.copy()
 
-    # Ostacolo blocca il percorso: calcola waypoint laterale
+    # Calcola bypass grezzo
     obs_pt = scan['punti'][idx]
     proj   = drone_pos + np.dot(obs_pt - drone_pos, dir_tn) * dir_tn
 
-    # Direzioni perpendicolari nel piano XY
     perp_r = np.array([ dir_tn[1], -dir_tn[0], 0.0])
     perp_l = np.array([-dir_tn[1],  dir_tn[0], 0.0])
 
-    # Scegli il lato più aperto confrontando i raggi LiDAR laterali
     ang_r = np.arctan2(perp_r[1], perp_r[0])
     ang_l = np.arctan2(perp_l[1], perp_l[0])
     dr    = (angoli - ang_r + np.pi) % (2 * np.pi) - np.pi
@@ -228,9 +243,21 @@ def calcola_target_effettivo(drone_pos, target_reale, scan):
     d_l   = scan['distanze'][int(np.argmin(np.abs(dl)))]
     perp  = perp_r if d_r >= d_l else perp_l
 
-    bypass    = proj + perp * BYPASS_MARGINE
-    bypass[2] = drone_pos[2]  # mantieni la quota corrente del drone
-    return bypass
+    bypass_raw    = proj + perp * BYPASS_MARGINE
+    bypass_raw[2] = drone_pos[2]
+
+    # Smoothing esponenziale: evita salti bruschi che invalidebbero il
+    # warm start di IPOPT e causerebbero fallimenti del solver.
+    if _bypass_pos_filtrato is None:
+        _bypass_pos_filtrato = bypass_raw.copy()
+    else:
+        _bypass_pos_filtrato = (
+            BYPASS_ALPHA * bypass_raw
+            + (1.0 - BYPASS_ALPHA) * _bypass_pos_filtrato
+        )
+
+    _bypass_attivo = True
+    return _bypass_pos_filtrato.copy()
 
 
 def visualizza_bypass(viewer, bypass_pos):
