@@ -89,7 +89,7 @@ figure('Name', 'LQR su Modello NON-Lineare (ODE45)', 'Color', 'w', 'Position', [
 subplot(2,2,1); hold on;
 plot(t_log, X_log(5, :), 'r', 'LineWidth', 1.5);
 plot([t_log(1) t_log(end)], [0 0], 'k--', 'LineWidth', 1);
-grid on; title('\theta)');
+grid on; title('\theta');
 xlabel('Tempo [s]'); ylabel('Angolo [rad]');
 
 % Z

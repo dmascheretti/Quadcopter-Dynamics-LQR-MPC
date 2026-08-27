@@ -21,7 +21,7 @@ U_log = zeros(4, N_steps);
 
 x_target = zeros(12, 1);
 x_target(1) = 7.5;
-x_target(2) = 2.0;
+x_target(2) = 2;
 x_target(3) = 0.0;
 
 X_log(:, 1) = zeros(12,1);
@@ -49,15 +49,13 @@ theta_deg   = rad2deg(X_log(5,:));
 idx_soglia  = find(abs(theta_deg) > SOGLIA_DEG, 1);
 t_soglia    = t_log(idx_soglia);
 
-% ── Figura unica per presentazione ─────────────────────────────────
-fig = figure('Color', [0.12 0.14 0.17], 'Position', [100 100 1200 620]);
-
+% ── Figura unica per presentazione (Sfondo Bianco) ─────────────────
+fig = figure('Color', 'white', 'Position', [100 100 1200 620]);
 BLUE   = [0.00 0.45 0.70];
 RED    = [0.85 0.10 0.10];
 GREEN  = [0.00 0.60 0.30];
 PURPLE = [0.55 0.15 0.68];
 GRAY   = [0.35 0.35 0.35];
-GRIDF  = [0.32 0.35 0.40];
 
 % ── Riga 1: posizioni ───────────────────────────────────────────────
 subplot(2,3,1);
@@ -66,8 +64,8 @@ yline(x_target(1), '--', 'Color', GRAY, 'LineWidth', 1.5, 'Label', 'Target');
 if ~isempty(idx_soglia)
     xline(t_soglia, ':', 'Color', RED, 'LineWidth', 2);
 end
-grid on; set(gca, 'GridColor', GRIDF, 'GridAlpha', 1, ...
-    'Box','on', 'FontSize', 11, 'Color', [0.18 0.20 0.24]);
+grid on; 
+set(gca, 'Box','on', 'FontSize', 11, 'Color', 'white');
 xlabel('Tempo [s]'); ylabel('x [m]'); title('\bfPosizione X', 'FontSize',12);
 
 subplot(2,3,2);
@@ -76,8 +74,8 @@ yline(x_target(2), '--', 'Color', GRAY, 'LineWidth', 1.5, 'Label', 'Target');
 if ~isempty(idx_soglia)
     xline(t_soglia, ':', 'Color', RED, 'LineWidth', 2);
 end
-grid on; set(gca, 'GridColor', GRIDF, 'GridAlpha', 1, ...
-    'Box','on', 'FontSize', 11, 'Color', [0.18 0.20 0.24]);
+grid on; 
+set(gca, 'Box','on', 'FontSize', 11, 'Color', 'white');
 xlabel('Tempo [s]'); ylabel('y [m]'); title('\bfPosizione Y', 'FontSize',12);
 
 subplot(2,3,3);
@@ -86,30 +84,33 @@ yline(x_target(3), '--', 'Color', GRAY, 'LineWidth', 1.5, 'Label', 'Target');
 if ~isempty(idx_soglia)
     xline(t_soglia, ':', 'Color', RED, 'LineWidth', 2);
 end
-grid on; set(gca, 'GridColor', GRIDF, 'GridAlpha', 1, ...
-    'Box','on', 'FontSize', 11, 'Color', [0.18 0.20 0.24]);
+grid on; 
+set(gca, 'Box','on', 'FontSize', 11, 'Color', 'white');
 xlabel('Tempo [s]'); ylabel('z [m]'); title('\bfPosizione Z', 'FontSize',12);
 
 % ── Riga 2: angoli ──────────────────────────────────────────────────
 subplot(2,3,4);
 plot(t_log, rad2deg(X_log(4,:)), 'Color', PURPLE, 'LineWidth', 2.5);
-grid on; set(gca, 'GridColor', GRIDF, 'GridAlpha', 1, ...
-    'Box','on', 'FontSize', 11, 'Color', [0.18 0.20 0.24]);
+grid on; 
+set(gca, 'Box','on', 'FontSize', 11, 'Color', 'white');
 xlabel('Tempo [s]'); ylabel('\phi [°]'); title('\bfRollio \phi', 'FontSize',12);
 
 subplot(2,3,5);
 plot(t_log, theta_deg, 'Color', RED, 'LineWidth', 2.5); hold on;
-grid on; set(gca, 'GridColor', GRIDF, 'GridAlpha', 1, ...
-    'Box','on', 'FontSize', 11, 'Color', [0.18 0.20 0.24]);
+grid on; 
+set(gca, 'Box','on', 'FontSize', 11, 'Color', 'white');
 xlabel('Tempo [s]'); ylabel('\theta [°]'); title('\bfBeccheggio \theta', 'FontSize',12);
 
 subplot(2,3,6);
 plot(t_log, rad2deg(X_log(6,:)), 'Color', BLUE, 'LineWidth', 2.5);
-grid on; set(gca, 'GridColor', GRIDF, 'GridAlpha', 1, ...
-    'Box','on', 'FontSize', 11, 'Color', [0.18 0.20 0.24]);
+grid on; 
+set(gca, 'Box','on', 'FontSize', 11, 'Color', 'white');
 xlabel('Tempo [s]'); ylabel('\psi [°]'); title('\bfImbardata \psi', 'FontSize',12);
 
-sgtitle('LQR — Tracking verso [7.5, 2.0, 0.0] m', ...
-    'FontSize', 13, 'FontWeight', 'bold', 'Color', 'white');
-exportgraphics(fig, 'lqr_divergenza.png', 'Resolution', 200, 'BackgroundColor', [0.12 0.14 0.17]);
-disp('Salvato: lqr_divergenza.png');
+% Titolo principale (ora nero)
+sgtitle('LQR — Tracking verso [7,5, 2.0, 0.0] m', ...
+    'FontSize', 13, 'FontWeight', 'bold', 'Color', 'black');
+
+% Esportazione come PDF vettoriale (perfetto per LaTeX)
+exportgraphics(fig, 'lqr_divergenza.pdf', 'ContentType', 'vector');
+disp('Salvato: lqr_divergenza.pdf');

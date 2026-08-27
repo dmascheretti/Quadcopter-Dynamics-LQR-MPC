@@ -35,7 +35,7 @@ from lidar_sim import LidarSim, visualizza_lidar
 
 # Disturbo del vento
 # Mettere a False per simulazione pulita (senza disturbi)
-ABILITA_VENTO = True
+ABILITA_VENTO = False
 WIND_FORCE    = np.array([2.0, -1.0, 0.0])  # [N] lungo X, Y, Z
 
 # Logging dei dati
@@ -417,8 +417,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
 
         if mpc.X_sol is not None:
             traj = mpc.X_sol[0:3, :].T
-            # Decommentare per visualizzare anche la traiettoria predetta
-            # visualizza_traiettoria(viewer, traj)
+            visualizza_traiettoria(viewer, traj)
 
         # Avanzamento della simulazione fisica
         data.ctrl[:] = u_prev
