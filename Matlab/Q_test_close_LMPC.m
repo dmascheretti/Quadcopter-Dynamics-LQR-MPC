@@ -28,6 +28,7 @@ N_steps = round(T_sim / Ts);
 X_log = zeros(12, N_steps);
 U_log = zeros(4, N_steps);
 T_log = (0:N_steps-1) * Ts;
+t_solve = zeros(N_steps, 1);   % tempo di soluzione del QP per passo [s]
 x_corrente = zeros(12, 1); % Condizioni iniziali
 bersaglio = [7.5; 2; 0];     % Target
 % Ipotesi iniziale per il solutore
@@ -41,7 +42,9 @@ for k = 1:N_steps
     opti.set_initial(U, u_guess);
     try
         % Risoluzione problema ottimizzazione (LTI, estremamente veloce)
+        t0 = tic;
         sol = opti.solve();
+        t_solve(k) = toc(t0);
         u_opt = sol.value(U);
         % Prendo prima u di controllo
         u_applicato = u_opt(:, 1);
@@ -68,6 +71,13 @@ for k = 1:N_steps
             k*Ts, x_corrente(3), x_corrente(1), x_corrente(2));
     end
 end
+
+% ---- Metriche tempo di soluzione ----
+ts = t_solve * 1e3;
+fprintf('Tempo soluzione [ms]: media %.2f  mediana %.2f  p95 %.2f  max %.2f\n', ...
+        mean(ts), median(ts), prctile(ts, 95), max(ts));
+fprintf('Passi oltre Ts=%.0f ms: %.1f%%\n', Ts*1e3, 100*mean(ts > Ts*1e3));
+
 % Traiettoria
 figure('Name', 'MPC LTI - Traiettoria di Volo', 'Color', 'w', 'Position', [100, 100, 600, 500]);
 plot3(X_log(1,:), X_log(2,:), X_log(3,:), 'r-', 'LineWidth', 2); hold on; % Linea rossa per LTI

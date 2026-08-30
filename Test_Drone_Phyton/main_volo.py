@@ -47,7 +47,7 @@ UDP_IP   = "127.0.0.1"
 UDP_PORT = 5005
 
 # Configurazione LiDAR
-ABILITA_LIDAR     = True
+ABILITA_LIDAR     = False
 LIDAR_N_RAGGI     = 32      # numero di raggi nella scansione completa
                              # (alzato da 16: con 16 raggi la spaziatura
                              # angolare di 22.5° era più larga della
@@ -122,6 +122,9 @@ body_id_target = mujoco.mj_name2id(
 )
 
 # Inizializzazione del LiDAR
+# (inizializzata sempre, anche a LiDAR disabilitato: calcola_target_effettivo()
+# e il loop principale la referenziano incondizionatamente)
+ultima_scansione = None
 if ABILITA_LIDAR:
     lidar = LidarSim(
         model,
@@ -131,7 +134,6 @@ if ABILITA_LIDAR:
         bodyexclude=body_id_x2,
         escludi_body_ids=(body_id_target,),
     )
-    ultima_scansione = None
     print(f"LiDAR attivo: {LIDAR_N_RAGGI} raggi, "
           f"settore {LIDAR_SETTORE_DEG:.0f}°, "
           f"range {LIDAR_RANGE_MAX:.1f}m")
@@ -167,6 +169,11 @@ if ABILITA_LOG:
         'target' : [],   # target corrente [x,y,z] m
         'vento'  : WIND_FORCE.tolist() if ABILITA_VENTO else None,
         'lidar_dist_min': [],  # distanza minima rilevata dal LiDAR [m]
+        # --- metriche computazionali / bypass ---
+        't_solve'    : [],   # tempo di soluzione del QP [s]
+        'target_eff' : [],   # target effettivo (bypass o reale)
+        'obs_pos'    : [],   # punto ostacolo passato all'MPC (nan se assente)
+        'obs_attivo' : [],   # True se la repulsione è attiva
     }
 
 # Variabili per il loop di simulazione
@@ -382,9 +389,11 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             )
 
             # Calcolo comando ottimale (con eventuale repulsione ostacolo)
-            u_opt  = mpc.calcola(x_curr, target_eff, u_prev,
-                                  obs_pos=obs_pos_lidar)
-            u_prev = u_opt
+            _t0      = time.perf_counter()
+            u_opt    = mpc.calcola(x_curr, target_eff, u_prev,
+                                    obs_pos=obs_pos_lidar)
+            _t_solve = time.perf_counter() - _t0
+            u_prev   = u_opt
 
             # Log dati
             if ABILITA_LOG:
@@ -400,6 +409,13 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
                     if (ABILITA_LIDAR and ultima_scansione is not None)
                     else np.nan
                 )
+                log['t_solve'].append(_t_solve)
+                log['target_eff'].append(target_eff.copy())
+                log['obs_pos'].append(
+                    obs_pos_lidar.copy() if obs_pos_lidar is not None
+                    else np.full(3, np.nan)
+                )
+                log['obs_attivo'].append(obs_pos_lidar is not None)
 
         # Azzeramento scena utente e ridisegno di tutti gli elementi
         # grafici aggiuntivi (LiDAR + traiettoria MPC) in questo frame
@@ -434,16 +450,29 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
 # Salvataggio dei dati di log a fine simulazione
 if ABILITA_LOG and len(log['t']) > 0:
     # Converti in array numpy per comodità
-    for k in ['pos', 'euler', 'vel', 'ang_vel', 'u', 'target']:
+    for k in ['pos', 'euler', 'vel', 'ang_vel', 'u', 'target',
+              'target_eff', 'obs_pos']:
         log[k] = np.array(log[k])
     log['t'] = np.array(log['t'])
     log['lidar_dist_min'] = np.array(log['lidar_dist_min'])
+    log['t_solve']    = np.array(log['t_solve'])
+    log['obs_attivo'] = np.array(log['obs_attivo'])
 
     with open(LOG_FILE, 'wb') as f:
         pickle.dump(log, f)
     print(f"\nDati salvati in '{LOG_FILE}' ({len(log['t'])} step, "
           f"{log['t'][-1]:.1f}s di simulazione)")
     print("Usare plot_risultati.py per visualizzare i grafici.")
+
+    ts = log['t_solve'] * 1e3
+    print(f"\nTempo di soluzione [ms]: media {ts.mean():.2f}  "
+          f"mediana {np.median(ts):.2f}  p95 {np.percentile(ts, 95):.2f}  "
+          f"max {ts.max():.2f}")
+    print(f"Passi oltre Ts=10ms: {100 * (ts > 10).mean():.1f}%")
+    if log['obs_attivo'].any():
+        print(f"  con ostacolo:   media {ts[log['obs_attivo']].mean():.2f} ms")
+    if (~log['obs_attivo']).any():
+        print(f"  senza ostacolo: media {ts[~log['obs_attivo']].mean():.2f} ms")
 else:
     print("\nSimulazione terminata (log disabilitato o nessun dato).")
 
