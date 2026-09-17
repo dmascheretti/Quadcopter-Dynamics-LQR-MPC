@@ -38,6 +38,12 @@ from lidar_sim import LidarSim, visualizza_lidar
 ABILITA_VENTO = False
 WIND_FORCE    = np.array([2.0, -1.0, 0.0])  # [N] lungo X, Y, Z
 
+# Scena da caricare: False = x2.xml (3 ostacoli, quella usata per
+# tutti i test/figure del Cap. 5 validati); True = x2_copertina.xml
+# (10 ostacoli variati, creata solo per lo screenshot del Cap. 1 —
+# non è mai stata testata per i risultati di obstacle avoidance).
+USA_SCENA_COPERTINA = True
+
 # Logging dei dati
 ABILITA_LOG   = True
 LOG_FILE      = "risultati_simulazione.pkl"
@@ -47,7 +53,7 @@ UDP_IP   = "127.0.0.1"
 UDP_PORT = 5005
 
 # Configurazione LiDAR
-ABILITA_LIDAR     = False
+ABILITA_LIDAR     = True
 LIDAR_N_RAGGI     = 32      # numero di raggi nella scansione completa
                              # (alzato da 16: con 16 raggi la spaziatura
                              # angolare di 22.5° era più larga della
@@ -91,6 +97,18 @@ BYPASS_ANGOLO_MAX = 0.40  # [rad] ≈ 23°: se il raggio LiDAR più vicino
                            # angolo E colpisce qualcosa prima del target,
                            # il percorso è considerato bloccato
 BYPASS_ALPHA      = 0.35  # coefficiente smoothing esponenziale del bypass
+BYPASS_DWELL_MIN  = 60    # [step] permanenza minima dopo l'attivazione
+                           # (~0.6s a Ts=0.01s): nei primi BYPASS_DWELL_MIN
+                           # passi la condizione di disattivazione non viene
+                           # valutata, per limitare il chattering on/off
+                           # quando il drone è sull'edge della zona di
+                           # attivazione. Non elimina il chattering, ne
+                           # limita la frequenza: se dai log risulta
+                           # un'oscillazione lenta (non rapida) va rivisto.
+BYPASS_TARGET_CAMBIO_SOGLIA = 0.5  # [m] se durante il dwell il target
+                           # reale si sposta oltre questa soglia (es.
+                           # nuovo comando joystick), il dwell si azzera
+                           # e si ricalcola il bypass subito
                            # 0=fisso sul valore precedente, 1=nessun filtro
 
 # Inizializzazione del controllore MPC
@@ -98,7 +116,8 @@ print("Inizializzazione MPC LPV...")
 mpc = MPC_Lineare(Ts=0.01, N=60)
 print("MPC pronto.")
 # Inizializzazione di MuJoCo
-xml_path = "skydio_x2/x2.xml"
+xml_path = ("skydio_x2/x2_copertina.xml" if USA_SCENA_COPERTINA
+            else "skydio_x2/x2.xml")
 if not os.path.exists(xml_path):
     print(f"ERRORE: {xml_path} non trovato.")
     exit()
@@ -182,35 +201,27 @@ loop_count = 0
 step_fisica = 1  # MPC gira ogni step fisico (Ts=0.01s)
 
 # Stato del bypass waypoint (persistente tra le chiamate)
-_bypass_pos_filtrato = None   # posizione bypass con smoothing esponenziale
-_bypass_attivo       = False  # True se il bypass era attivo allo step precedente
+_bypass_pos_filtrato       = None   # posizione bypass con smoothing esponenziale
+_bypass_attivo             = False  # True se il bypass era attivo allo step precedente
+_bypass_dwell_rimanente    = 0      # passi residui di permanenza minima obbligatoria
+_bypass_target_attivazione = None   # target reale al momento dell'attivazione del bypass
 
 
-def calcola_target_effettivo(drone_pos, target_reale, scan):
+def _valuta_bypass_raw(drone_pos, target_reale, scan):
     """
-    Restituisce il target effettivo da passare all'MPC.
-
-    Se un ostacolo blocca il percorso diretto drone→target, calcola un
-    waypoint laterale (bypass) sul lato più aperto. Applica:
-    - smoothing esponenziale (BYPASS_ALPHA) per evitare salti bruschi
-      del target che invalidano il warm start di IPOPT
-    - isteresi sull'angolo di attivazione: il bypass si disattiva solo
-      quando il percorso è chiaramente libero (soglia x1.5), non appena
-      esce dalla zona borderline, evitando oscillazioni rapide on/off
+    Valuta se, in base alla geometria istantanea, serve un bypass e, se
+    sì, ne calcola la posizione grezza (prima dello smoothing). Restituisce
+    None se il bypass non è necessario o non calcolabile in questo istante.
+    Non gestisce isteresi/dwell: quella logica vive in
+    calcola_target_effettivo(), questa funzione è pura geometria.
     """
-    global _bypass_pos_filtrato, _bypass_attivo
-
     if scan is None:
-        _bypass_pos_filtrato = None
-        _bypass_attivo = False
-        return target_reale.copy()
+        return None
 
     dir_t  = target_reale - drone_pos
     dist_t = np.linalg.norm(dir_t)
     if dist_t < 0.3:
-        _bypass_pos_filtrato = None
-        _bypass_attivo = False
-        return target_reale.copy()
+        return None
 
     dir_tn     = dir_t / dist_t
     ang_target = np.arctan2(dir_tn[1], dir_tn[0])
@@ -219,23 +230,14 @@ def calcola_target_effettivo(drone_pos, target_reale, scan):
     delta  = (angoli - ang_target + np.pi) % (2 * np.pi) - np.pi
     idx    = int(np.argmin(np.abs(delta)))
 
-    # Isteresi: soglia più ampia per disattivare il bypass rispetto ad
-    # attivarlo, evitando oscillazioni rapide on/off quando il drone
-    # è sull'edge della zona di attivazione.
-    soglia_ang = BYPASS_ANGOLO_MAX * (1.5 if _bypass_attivo else 1.0)
-
     bypass_necessario = (
-        np.abs(delta[idx]) <= soglia_ang
+        np.abs(delta[idx]) <= BYPASS_ANGOLO_MAX
         and scan['hit'][idx]
         and scan['distanze'][idx] < dist_t - 0.2
     )
-
     if not bypass_necessario:
-        _bypass_pos_filtrato = None
-        _bypass_attivo = False
-        return target_reale.copy()
+        return None
 
-    # Calcola bypass grezzo
     obs_pt = scan['punti'][idx]
     proj   = drone_pos + np.dot(obs_pt - drone_pos, dir_tn) * dir_tn
 
@@ -252,9 +254,101 @@ def calcola_target_effettivo(drone_pos, target_reale, scan):
 
     bypass_raw    = proj + perp * BYPASS_MARGINE
     bypass_raw[2] = drone_pos[2]
+    return bypass_raw
 
-    # Smoothing esponenziale: evita salti bruschi che invalidebbero il
+
+def calcola_target_effettivo(drone_pos, target_reale, scan):
+    """
+    Restituisce il target effettivo da passare all'MPC.
+
+    Se un ostacolo blocca il percorso diretto drone→target, calcola un
+    waypoint laterale (bypass) sul lato più aperto. Applica:
+    - smoothing esponenziale (BYPASS_ALPHA) per evitare salti bruschi
+      del target che invalidano il warm start di IPOPT
+    - isteresi sull'angolo di attivazione: il bypass si disattiva solo
+      quando il percorso è chiaramente libero (soglia x1.5), non appena
+      esce dalla zona borderline, evitando oscillazioni rapide on/off
+    - permanenza minima (dwell, BYPASS_DWELL_MIN passi): appena il
+      bypass si attiva, la condizione di disattivazione non viene
+      nemmeno valutata per un tempo minimo, per limitare ulteriormente
+      il chattering rapido; l'unica eccezione è un cambio sostanziale
+      del target reale (es. nuovo comando joystick), che azzera
+      immediatamente il dwell e forza una rivalutazione
+    """
+    global _bypass_pos_filtrato, _bypass_attivo
+    global _bypass_dwell_rimanente, _bypass_target_attivazione
+
+    # --- Bypass già attivo e ancora in dwell: non valutare la
+    # disattivazione, salvo cambio sostanziale del target reale. ---
+    if _bypass_attivo and _bypass_dwell_rimanente > 0:
+        cambio_target = (
+            _bypass_target_attivazione is not None
+            and np.linalg.norm(target_reale - _bypass_target_attivazione)
+                > BYPASS_TARGET_CAMBIO_SOGLIA
+        )
+        if not cambio_target:
+            _bypass_dwell_rimanente -= 1
+            # Aggiorna la stima se possibile (segue un ostacolo che si
+            # sposta leggermente nella scansione); altrimenti mantiene
+            # l'ultimo waypoint filtrato invece di sterzare di scatto.
+            bypass_raw = _valuta_bypass_raw(drone_pos, target_reale, scan)
+            if bypass_raw is not None and _bypass_pos_filtrato is not None:
+                _bypass_pos_filtrato = (
+                    BYPASS_ALPHA * bypass_raw
+                    + (1.0 - BYPASS_ALPHA) * _bypass_pos_filtrato
+                )
+            if _bypass_pos_filtrato is not None:
+                return _bypass_pos_filtrato.copy()
+        else:
+            # Target cambiato: azzera il dwell, si ricalcola tutto sotto.
+            _bypass_dwell_rimanente = 0
+            _bypass_attivo = False
+            _bypass_pos_filtrato = None
+
+    # --- Valutazione normale (bypass non attivo, o dwell esaurito) ---
+    if scan is None:
+        _bypass_pos_filtrato = None
+        _bypass_attivo = False
+        return target_reale.copy()
+
+    dist_t = np.linalg.norm(target_reale - drone_pos)
+    if dist_t < 0.3:
+        _bypass_pos_filtrato = None
+        _bypass_attivo = False
+        return target_reale.copy()
+
+    # Isteresi: soglia più ampia per disattivare il bypass rispetto ad
+    # attivarlo (si applica solo dopo il dwell, quando si può ancora
+    # essere in bypass ma con permanenza minima già esaurita).
+    if _bypass_attivo:
+        dir_t      = target_reale - drone_pos
+        dir_tn     = dir_t / dist_t
+        ang_target = np.arctan2(dir_tn[1], dir_tn[0])
+        angoli     = scan['angoli_abs']
+        delta      = (angoli - ang_target + np.pi) % (2 * np.pi) - np.pi
+        idx        = int(np.argmin(np.abs(delta)))
+        bypass_necessario = (
+            np.abs(delta[idx]) <= BYPASS_ANGOLO_MAX * 1.5
+            and scan['hit'][idx]
+            and scan['distanze'][idx] < dist_t - 0.2
+        )
+        if not bypass_necessario:
+            _bypass_pos_filtrato = None
+            _bypass_attivo = False
+            return target_reale.copy()
+        bypass_raw = _valuta_bypass_raw(drone_pos, target_reale, scan)
+        if bypass_raw is None:
+            _bypass_pos_filtrato = None
+            _bypass_attivo = False
+            return target_reale.copy()
+    else:
+        bypass_raw = _valuta_bypass_raw(drone_pos, target_reale, scan)
+        if bypass_raw is None:
+            return target_reale.copy()
+
+    # Smoothing esponenziale: evita salti bruschi che invaliderebbero il
     # warm start di IPOPT e causerebbero fallimenti del solver.
+    appena_attivato = not _bypass_attivo
     if _bypass_pos_filtrato is None:
         _bypass_pos_filtrato = bypass_raw.copy()
     else:
@@ -262,6 +356,10 @@ def calcola_target_effettivo(drone_pos, target_reale, scan):
             BYPASS_ALPHA * bypass_raw
             + (1.0 - BYPASS_ALPHA) * _bypass_pos_filtrato
         )
+
+    if appena_attivato:
+        _bypass_dwell_rimanente    = BYPASS_DWELL_MIN
+        _bypass_target_attivazione = target_reale.copy()
 
     _bypass_attivo = True
     return _bypass_pos_filtrato.copy()
